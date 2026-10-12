@@ -52,6 +52,10 @@ pub struct InvoiceBrief {
     pub pending_reply: Option<ReplyIntent>,
     pub rounds: u8,
     pub client_has_ap_agent: bool,
+    /// Actions already waiting for the owner on this invoice. A move that is
+    /// already in the inbox must not be proposed again — otherwise every
+    /// scheduler pass would stack another copy of the same question.
+    pub pending_kinds: Vec<ActionKind>,
     pub pay_link: String,
     /// (author label, text), oldest first.
     pub history: Vec<(String, String)>,
@@ -369,7 +373,8 @@ impl Planner {
     fn candidates(&self, brief: &InvoiceBrief, mandate: &CollectionMandate) -> Vec<Move> {
         let mut moves = Vec::new();
 
-        // 1. A reply waiting for a plan is the strongest signal there is.
+        // 1. A reply waiting for a plan is the strongest signal there is —
+        // unless terms are already sitting in the owner's inbox.
         if let Some(
             ReplyIntent::RequestsPlan { .. }
             | ReplyIntent::RequestsDiscount { .. }
@@ -377,7 +382,9 @@ impl Planner {
             | ReplyIntent::Unrelated { .. },
         ) = &brief.pending_reply
         {
-            moves.push(Move::OfferPlan);
+            if !brief.pending_kinds.contains(&ActionKind::OfferTerms) {
+                moves.push(Move::OfferPlan);
+            }
         }
 
         let days_since_contact = brief
@@ -385,13 +392,19 @@ impl Planner {
             .map(|at| (chrono::Utc::now() - at).num_days())
             .unwrap_or(i64::MAX);
 
+        let already_pending = |kind: ActionKind| brief.pending_kinds.contains(&kind);
+
         // 2. Very long silence: propose closing the receivable (owner decides).
-        if brief.days_overdue >= mandate.stop_after_days_silent as i64 {
+        if brief.days_overdue >= mandate.stop_after_days_silent as i64
+            && !already_pending(ActionKind::CloseUncollectible)
+        {
             moves.push(Move::CloseUncollectible);
         }
 
         // 3. Enough contacts without resolution: stop nudging, escalate.
-        if brief.contact_count >= mandate.escalate_after_contacts {
+        if brief.contact_count >= mandate.escalate_after_contacts
+            && !already_pending(ActionKind::Escalate)
+        {
             moves.push(Move::Escalate);
         }
 
@@ -752,6 +765,7 @@ mod tests {
             pending_reply: None,
             rounds: 0,
             client_has_ap_agent: true,
+            pending_kinds: Vec::new(),
             pay_link: "https://kindly.demo/c/tok".into(),
             history: vec![],
         }
@@ -998,6 +1012,37 @@ mod tests {
                 kindly_core::policy::ProposedAction::StartAgentNegotiation { .. }
             ),
             "an out-of-set choice cannot be acted on"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_move_already_waiting_for_the_owner_is_not_proposed_again() {
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(crate::systemone::NoSystemOne),
+            "Maya Rodriguez",
+        );
+        let mut silent = brief();
+        silent.client_has_ap_agent = false;
+        silent.days_overdue = 200;
+        silent.contact_count = 6;
+        silent.last_contact_at = Some(chrono::Utc::now() - chrono::Duration::days(60));
+
+        let first = planner.plan(&silent, &mandate()).await;
+        assert!(first.actions.iter().any(|action| matches!(
+            action,
+            kindly_core::policy::ProposedAction::CloseUncollectible { .. }
+        )));
+
+        // The same situation, but the closure is already in the inbox.
+        silent.pending_kinds = vec![ActionKind::CloseUncollectible];
+        let second = planner.plan(&silent, &mandate()).await;
+        assert!(
+            !second.actions.iter().any(|action| matches!(
+                action,
+                kindly_core::policy::ProposedAction::CloseUncollectible { .. }
+            )),
+            "the owner is not asked the same question twice"
         );
     }
 

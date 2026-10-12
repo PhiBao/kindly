@@ -208,6 +208,8 @@ pub struct BriefInputs {
     pub has_ap_agent: bool,
     pub pending_reply: Option<ReplyIntent>,
     pub history: Vec<(String, String)>,
+    /// Kinds already awaiting the owner's decision on this invoice.
+    pub pending_kinds: Vec<ActionKind>,
     pub pay_link: String,
 }
 
@@ -267,6 +269,14 @@ pub async fn load_brief(state: &AppState, invoice_id: InvoiceId) -> ApiResult<Br
         )
     );
 
+    let pending_kinds = store
+        .pending_approvals()
+        .await?
+        .into_iter()
+        .filter(|action| action.invoice_id == invoice.id)
+        .map(|action| action.kind)
+        .collect();
+
     Ok(BriefInputs {
         invoice,
         client,
@@ -276,6 +286,7 @@ pub async fn load_brief(state: &AppState, invoice_id: InvoiceId) -> ApiResult<Br
         has_ap_agent,
         pending_reply,
         history,
+        pending_kinds,
         pay_link,
     })
 }
@@ -302,6 +313,7 @@ pub fn brief_for(inputs: &BriefInputs) -> InvoiceBrief {
         pending_reply: inputs.pending_reply.clone(),
         rounds: inputs.negotiation.rounds,
         client_has_ap_agent: inputs.has_ap_agent,
+        pending_kinds: inputs.pending_kinds.clone(),
         pay_link: inputs.pay_link.clone(),
         history: inputs.history.clone(),
     }
