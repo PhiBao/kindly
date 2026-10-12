@@ -27,8 +27,35 @@ use std::sync::Arc;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
+/// Read `.env` into the process environment (without overwriting anything
+/// already set). Keeps `./scripts/dev-server.sh` and `kindly serve` working from
+/// a checked-out repository with no wrapper, and no extra dependency.
+fn load_dotenv(path: &str) {
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return;
+    };
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim().trim_matches('"').trim_matches('\'');
+        if key.is_empty() || std::env::var_os(key).is_some() {
+            continue;
+        }
+        // SAFETY: called once, before any threads are spawned.
+        std::env::set_var(key, value);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    load_dotenv(".env");
+    load_dotenv("../.env");
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
