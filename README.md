@@ -288,6 +288,12 @@ cd web && pnpm install && pnpm build && pnpm start
    such as `cloudflared` or `ngrok`).
 4. Verify the credentials: `cargo run -p kindly-server -- paypal-check`.
 
+Two notes for live mode: the seeded demo clients use `.test` email addresses, so PayPal may
+create their invoices but refuse to deliver them (Kindly logs this and carries on — replace a
+client's email on the invoice desk to receive the real sandbox email); and PayPal delivers
+webhooks only to a publicly reachable URL, which is why `KINDLY_PUBLIC_URL` and a tunnel
+matter.
+
 Everything in the product works the same way; the badges in the header switch from
 *simulated PayPal* to *PayPal sandbox*.
 
