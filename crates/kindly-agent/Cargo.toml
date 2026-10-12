@@ -1,0 +1,21 @@
+[package]
+name = "kindly-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Kindly's agent layer: LLM adapters, reply understanding, message composition, negotiation planning, and the client-side AP agent"
+
+[dependencies]
+async-trait = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+ed25519-dalek = { workspace = true }
+kindly-core = { workspace = true }
+rand_core = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

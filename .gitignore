@@ -1,0 +1,34 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Local data
+*.db
+*.db-shm
+*.db-wal
+/data
+
+# Node / Next.js
+node_modules
+.next
+out
+.turbo
+web/.env*
+!.env.example
+
+# Editors / OS
+.DS_Store
+.idea
+.vscode
+*.swp
+
+# Tooling caches
+/tmp
+.founder
