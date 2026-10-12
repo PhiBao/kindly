@@ -241,7 +241,7 @@ export default function ClientPortalPage() {
             onChange={(event) => setMessage(event.target.value)}
           />
           <div className="mt-2 flex items-center justify-between gap-3">
-            <span className="mono-xs">
+            <span className="mono-xs max-w-[60ch]">
               {invoicer.name}&rsquo;s assistant replies here, in their voice.
             </span>
             <button className="btn btn--solid btn--sm" onClick={() => void sendMessage()} disabled={sending}>

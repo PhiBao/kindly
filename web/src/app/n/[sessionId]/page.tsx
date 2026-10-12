@@ -72,7 +72,7 @@ export default function NegotiationRoomPage() {
             Two agents, one outstanding invoice, signed terms — and a human on each side where it matters.
           </p>
         </div>
-        <div className="flex items-center gap-3 pr-1">
+        <div className="flex items-center gap-3 pr-3">
           <span className="mono-xs">
             {session.rounds} round{session.rounds === 1 ? "" : "s"} · {session.transcript.length} messages
           </span>
