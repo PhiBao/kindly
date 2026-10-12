@@ -179,8 +179,9 @@ Four jobs, all bounded by the policy engine:
 - **AG Grid + AG Charts** — the money view: a sortable register of receivables read forward
   to expected payment dates, an exposure doughnut, habit-vs-outcome and attributed-cause
   charts (`/analytics`).
-- **APIMatic context plugin** — used while integrating PayPal's APIs (deterministic context
-  for the coding agent rather than guessing at the SDK surface).
+
+No other sponsor tool is claimed. The submission lists AG Grid only, because that is the one
+used in the product.
 
 ### Judging criteria, mapped
 

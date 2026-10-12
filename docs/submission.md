@@ -62,8 +62,8 @@ blocks. Replace `‹placeholders›` before submitting.
 > week, exposure by client behaviour, habit-versus-outcome and attributed-cause charts). The
 > expected-payment model is stated in the UI rather than hidden.
 >
-> *(If used during development and worth claiming: **APIMatic** — the Context Plugin was used
-> while integrating the PayPal APIs.)*
+> No other sponsor tool is claimed in this submission — AG Grid is the one used in the product
+> itself.
 
 ### If you used AG Grid, what was your experience building with AG Grid/AG Charts?
 
@@ -77,17 +77,6 @@ blocks. Replace `‹placeholders›` before submitting.
 > (`ModuleRegistry.registerModules`) before render, and passing `axes` as an array type-checks
 > against the polar axes union — using the record form (`axes: { x: …, y: … }`) and typing the
 > options as `AgCartesianChartOptions` resolved it.
-
-### If you used the APIMatic Context Plugin, briefly share your experience
-
-> Used the Context Plugin while wiring PayPal's Invoicing and Orders endpoints. It helped most
-> where the API surface is easy to get subtly wrong — the exact shape of the invoice create
-> body (nested `billing_info`, `configuration.partial_payment`), the reminder request, and the
-> difference between marking an invoice paid and recording a partial payment. Compared with
-> working from memory or web search, having version-aligned context in the editor removed a
-> class of "compiles but 422s in the sandbox" mistakes.
-
----
 
 ## Provide a URL to your public code repository
 
@@ -147,10 +136,9 @@ blocks. Replace `‹placeholders›` before submitting.
 
 ## Which AI tools have you leveraged while working on this project?
 
-> OpenAI-compatible chat completions (for reply understanding, message composition, plan
-> parameters and move selection — with a deterministic template fallback), a coding agent
-> (OpenCode with DeepSeek and Claude models) for implementation and review, APIMatic's Context
-> Plugin for deterministic PayPal API context, and Playwright for browser-level verification.
+> OpenAI-compatible chat completions for the product's own drafting and understanding (with a
+> deterministic template fallback), a coding agent (OpenCode) for implementation, review and
+> verification, and Playwright for browser-level checks of every surface.
 
 ## Describe the level of learning you/your team derived from the project
 
