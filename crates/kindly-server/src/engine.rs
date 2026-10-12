@@ -22,7 +22,7 @@ use kindly_core::ledger::{LedgerEvent, LedgerKind};
 use kindly_core::mandate::{Channel, CollectionMandate};
 use kindly_core::money::Money;
 use kindly_core::negotiation::{
-    self as nego, CloseOutcome, EffectPurpose, NegoEvent, NegoEffect, Negotiation, ReplyIntent,
+    self as nego, CloseOutcome, EffectPurpose, NegoEffect, NegoEvent, Negotiation, ReplyIntent,
     Stage, Terms,
 };
 use kindly_core::policy::{self, PolicyContext, PolicyDecision, ProposedAction};
@@ -129,10 +129,7 @@ pub async fn push_invoice_to_paypal(
     let created = state.paypal.create_invoice(request).await?;
     invoice.paypal_invoice_id = Some(created.id.clone());
     invoice.paypal_status = Some(created.status.as_str().to_string());
-    state
-        .store
-        .upsert_invoice(invoice, work_summary)
-        .await?;
+    state.store.upsert_invoice(invoice, work_summary).await?;
     Ledger::new(&state.store, Some(&state.events))
         .write(
             LedgerEvent::new(
@@ -147,7 +144,9 @@ pub async fn push_invoice_to_paypal(
                 ),
             )
             .with_invoice(invoice.id)
-            .with_detail(json!({ "paypal_invoice_id": created.id, "status": created.status.as_str() })),
+            .with_detail(
+                json!({ "paypal_invoice_id": created.id, "status": created.status.as_str() }),
+            ),
         )
         .await?;
     Ok(())
@@ -185,7 +184,11 @@ pub async fn paypal_reminder(state: &AppState, invoice: &Invoice) -> ApiResult<b
         invoice.outstanding().display_with_symbol(),
         invoice.due_date.format("%-d %B")
     );
-    match state.paypal.remind_invoice(&paypal_id, &subject, &note).await {
+    match state
+        .paypal
+        .remind_invoice(&paypal_id, &subject, &note)
+        .await
+    {
         Ok(()) => Ok(true),
         Err(error) => {
             warn!(invoice = %invoice.number, %error, "paypal reminder not sent");
@@ -241,8 +244,10 @@ pub async fn load_brief(state: &AppState, invoice_id: InvoiceId) -> ApiResult<Br
                 }
             }
         }
-        if !matches!(negotiation.stage, Stage::Negotiating | Stage::AwaitingReply | Stage::Contacted)
-        {
+        if !matches!(
+            negotiation.stage,
+            Stage::Negotiating | Stage::AwaitingReply | Stage::Contacted
+        ) {
             pending_reply = pending_reply.filter(|intent| {
                 matches!(
                     intent,
@@ -324,7 +329,12 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
         let ledger = Ledger::new(&state.store, Some(&state.events));
         for narrative in &outcome.narrative {
             ledger
-                .note(Actor::KindlyAgent, LedgerKind::AgentProposed, narrative.clone(), Some(invoice_id))
+                .note(
+                    Actor::KindlyAgent,
+                    LedgerKind::AgentProposed,
+                    narrative.clone(),
+                    Some(invoice_id),
+                )
                 .await?;
         }
 
@@ -338,12 +348,18 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
             .iter()
             .any(|a| {
                 matches!(a.kind, ActionKind::Escalate)
-                    && matches!(a.status, ActionStatus::AwaitingApproval | ActionStatus::Approved)
+                    && matches!(
+                        a.status,
+                        ActionStatus::AwaitingApproval | ActionStatus::Approved
+                    )
             });
 
         let now = Utc::now();
         for (index, proposal) in outcome.actions.iter().enumerate() {
-            let draft = outcome.drafts.iter().find(|d| d.action_kind == proposal.kind());
+            let draft = outcome
+                .drafts
+                .iter()
+                .find(|d| d.action_kind == proposal.kind());
             let ctx = PolicyContext {
                 now,
                 mandate: &mandate,
@@ -356,10 +372,7 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
             // Draft message (if any) is persisted immediately so the approval
             // inbox can show the exact words that would go out.
             let draft_message_id = match draft {
-                Some(draft) => Some(
-                    persist_draft(state, &inputs, draft, &decision)
-                        .await?,
-                ),
+                Some(draft) => Some(persist_draft(state, &inputs, draft, &decision).await?),
                 None => None,
             };
 
@@ -400,7 +413,11 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
                         .note(
                             Actor::KindlyAgent,
                             LedgerKind::PolicyAllowed,
-                            format!("{} allowed — {}", proposal.kind().label(), decision.explain()),
+                            format!(
+                                "{} allowed — {}",
+                                proposal.kind().label(),
+                                decision.explain()
+                            ),
                             Some(invoice_id),
                         )
                         .await?;
@@ -409,7 +426,10 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
                         Ok(()) => {
                             report.executed += 1;
                             if proposal.contacts_client() {
-                                recent.push(kindly_core::policy::ActionSummary::new(proposal.kind(), now));
+                                recent.push(kindly_core::policy::ActionSummary::new(
+                                    proposal.kind(),
+                                    now,
+                                ));
                             }
                         }
                         Err(error) => {
@@ -449,7 +469,11 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
                         .note(
                             Actor::KindlyAgent,
                             LedgerKind::PolicyBlocked,
-                            format!("{} blocked — {}", proposal.kind().label(), decision.explain()),
+                            format!(
+                                "{} blocked — {}",
+                                proposal.kind().label(),
+                                decision.explain()
+                            ),
                             Some(invoice_id),
                         )
                         .await?;
@@ -515,9 +539,7 @@ pub async fn execute_action(state: &AppState, action_id: ActionId) -> ApiResult<
     state.store.save_action(&action).await?;
 
     let result = match action.proposal.clone() {
-        ProposedAction::SendNudge { channel, .. } => {
-            send_nudge(state, &action, channel).await
-        }
+        ProposedAction::SendNudge { channel, .. } => send_nudge(state, &action, channel).await,
         ProposedAction::OfferTerms { terms, channel } => {
             offer_terms(state, &action, &terms, channel).await
         }
@@ -542,9 +564,7 @@ pub async fn execute_action(state: &AppState, action_id: ActionId) -> ApiResult<
                 .await?;
             Ok(())
         }
-        ProposedAction::Escalate { reason } => {
-            escalate(state, &action, &reason).await
-        }
+        ProposedAction::Escalate { reason } => escalate(state, &action, &reason).await,
         ProposedAction::Pause { days, reason } => {
             let mut negotiation = state.store.negotiation(action.invoice_id).await?;
             let effects = nego::apply(
@@ -631,7 +651,11 @@ async fn send_nudge(state: &AppState, action: &AgentAction, channel: Channel) ->
     let client = state.store.client(invoice.client_id).await?;
     let thread_id = state
         .store
-        .ensure_thread(action.invoice_id, channel_key(channel), client.display_name())
+        .ensure_thread(
+            action.invoice_id,
+            channel_key(channel),
+            client.display_name(),
+        )
         .await?;
 
     // The draft stored at proposal time is the message the owner saw.
@@ -650,16 +674,16 @@ async fn send_nudge(state: &AppState, action: &AgentAction, channel: Channel) ->
         // Re-compose if the draft is missing (e.g. after an approval).
         let facts = compose_facts(state, &invoice, &client, None).await?;
         let tone = kindly_core::mandate::Tone::for_contact(
-            state.store.negotiation(action.invoice_id).await?.contact_count + 1,
+            state
+                .store
+                .negotiation(action.invoice_id)
+                .await?
+                .contact_count
+                + 1,
             &state.store.active_mandate().await?.tone_ladder,
         );
-        let composed = compose_message(
-            state.llm.as_ref(),
-            EffectPurpose::FollowUp,
-            tone,
-            &facts,
-        )
-        .await;
+        let composed =
+            compose_message(state.llm.as_ref(), EffectPurpose::FollowUp, tone, &facts).await;
         subject = Some(composed.subject.clone());
         body = Some(composed.body.clone());
         state
@@ -769,7 +793,11 @@ async fn offer_terms(
     let client = state.store.client(invoice.client_id).await?;
     let thread_id = state
         .store
-        .ensure_thread(action.invoice_id, channel_key(channel), client.display_name())
+        .ensure_thread(
+            action.invoice_id,
+            channel_key(channel),
+            client.display_name(),
+        )
         .await?;
 
     let summary = kindly_agent::planner::summarise_terms(terms, invoice.currency.code());
@@ -848,7 +876,11 @@ pub async fn issue_plan_invoices(
             invoice.currency,
             installment.due,
             vec![kindly_core::invoice::InvoiceLine::new(
-                format!("Instalment {} of payment plan for invoice {}", index + 1, invoice.number),
+                format!(
+                    "Instalment {} of payment plan for invoice {}",
+                    index + 1,
+                    invoice.number
+                ),
                 kindly_core::invoice::Quantity::whole(1).map_err(ApiError::Domain)?,
                 installment.amount,
             )],
@@ -976,8 +1008,16 @@ pub async fn apply_effect(
         NegoEffect::NotifyOwner { summary, security } => {
             ledger
                 .note(
-                    if security { Actor::System } else { Actor::KindlyAgent },
-                    if security { LedgerKind::SecurityEvent } else { LedgerKind::NegotiationEvent },
+                    if security {
+                        Actor::System
+                    } else {
+                        Actor::KindlyAgent
+                    },
+                    if security {
+                        LedgerKind::SecurityEvent
+                    } else {
+                        LedgerKind::NegotiationEvent
+                    },
                     summary,
                     Some(*invoice_id),
                 )
@@ -1048,7 +1088,11 @@ pub async fn apply_effect(
                 )
                 .await?;
         }
-        NegoEffect::SendMessage { channel, tone, purpose } => {
+        NegoEffect::SendMessage {
+            channel,
+            tone,
+            purpose,
+        } => {
             let invoice = state.store.invoice(*invoice_id).await?;
             let client = state.store.client(invoice.client_id).await?;
             let thread_id = state
@@ -1080,7 +1124,11 @@ pub async fn apply_effect(
 
 // ─────────────────────────────── approvals ───────────────────────────────
 
-pub async fn approve_action(state: &AppState, action_id: ActionId, approved: bool) -> ApiResult<()> {
+pub async fn approve_action(
+    state: &AppState,
+    action_id: ActionId,
+    approved: bool,
+) -> ApiResult<()> {
     let action = state.store.action(action_id).await?;
     if action.status != ActionStatus::AwaitingApproval {
         return Err(ApiError::Conflict(format!(
@@ -1227,7 +1275,8 @@ pub async fn apply_payment(
             .collect::<Vec<_>>();
         let payments = state.store.payments(invoice_id).await?;
         let baseline = Some(client.behavior.avg_days_late as i64 + 30);
-        let attribution = attribution::attribute(&invoice, &action_records, &payments, baseline, Utc::now());
+        let attribution =
+            attribution::attribute(&invoice, &action_records, &payments, baseline, Utc::now());
         state.store.save_attribution(&attribution).await?;
         ledger
             .note(
@@ -1450,14 +1499,10 @@ pub async fn compose_facts(
                 crate::portal::PORTAL_TOKEN_TTL_DAYS
             )
         ),
-        plan_summary: terms.map(|t| kindly_agent::planner::summarise_terms(t, invoice.currency.code())),
+        plan_summary: terms
+            .map(|t| kindly_agent::planner::summarise_terms(t, invoice.currency.code())),
         promised_on: None,
         history,
         language_hint: None,
     })
-}
-
-/// Convenience for the runtime: is this invoice already settled?
-pub fn is_settled(invoice: &Invoice) -> bool {
-    !invoice.outstanding().is_positive()
 }

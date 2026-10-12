@@ -21,7 +21,9 @@ fn b64(bytes: &[u8]) -> String {
 }
 
 fn unb64(value: &str) -> Option<Vec<u8>> {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(value).ok()
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(value)
+        .ok()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -83,7 +83,9 @@ impl ComposeFacts {
         map.insert("days_overdue", self.days_overdue.to_string());
         map.insert(
             "work",
-            self.work_summary.clone().unwrap_or_else(|| "the work".into()),
+            self.work_summary
+                .clone()
+                .unwrap_or_else(|| "the work".into()),
         );
         map.insert("pay_link", self.pay_link.clone());
         map.insert(
@@ -101,10 +103,7 @@ impl ComposeFacts {
 }
 
 fn display_first(name: &str) -> String {
-    name.split_whitespace()
-        .next()
-        .unwrap_or(name)
-        .to_string()
+    name.split_whitespace().next().unwrap_or(name).to_string()
 }
 
 fn render(template: &str, facts: &ComposeFacts) -> String {
@@ -203,7 +202,8 @@ async fn compose_with_model(
     let history = if facts.history.is_empty() {
         "(no earlier messages)".to_string()
     } else {
-        facts.history
+        facts
+            .history
             .iter()
             .rev()
             .take(4)
@@ -254,7 +254,10 @@ If the client wrote in another language, reply in that language."#,
             .map(|d| d.format("%Y-%m-%d").to_string())
             .unwrap_or_else(|| "unknown".into()),
         days = facts.days_overdue,
-        work = facts.work_summary.clone().unwrap_or_else(|| "the work".into()),
+        work = facts
+            .work_summary
+            .clone()
+            .unwrap_or_else(|| "the work".into()),
         link = facts.pay_link,
         plan = facts.plan_summary.clone().unwrap_or_else(|| "none".into()),
         promised = facts
@@ -273,18 +276,17 @@ If the client wrote in another language, reply in that language."#,
 }
 
 /// One- or two-sentence summary of an invoice's state for the owner's ledger.
-pub async fn brief_line(
-    llm: &dyn LlmProvider,
-    facts: &ComposeFacts,
-    stage_label: &str,
-) -> String {
+pub async fn brief_line(llm: &dyn LlmProvider, facts: &ComposeFacts, stage_label: &str) -> String {
     let fallback = if facts.days_overdue > 0 {
         if facts.promised_on.is_some() {
             format!(
                 "{} · {} days past due · payment promised for {}",
                 facts.invoice_number,
                 facts.days_overdue,
-                facts.promised_on.map(|d| d.format("%-d %B").to_string()).unwrap_or_default()
+                facts
+                    .promised_on
+                    .map(|d| d.format("%-d %B").to_string())
+                    .unwrap_or_default()
             )
         } else {
             format!(
@@ -366,8 +368,14 @@ mod tests {
         ] {
             let (subject, body) = template_for(purpose, Tone::Warm, &facts);
             assert!(!subject.is_empty(), "subject missing for {purpose:?}");
-            assert!(!body.contains("{{"), "unfilled placeholder in {purpose:?}: {body}");
-            assert!(!subject.contains("{{"), "unfilled placeholder in subject: {subject}");
+            assert!(
+                !body.contains("{{"),
+                "unfilled placeholder in {purpose:?}: {body}"
+            );
+            assert!(
+                !subject.contains("{{"),
+                "unfilled placeholder in subject: {subject}"
+            );
         }
     }
 
@@ -380,7 +388,8 @@ mod tests {
 
     #[tokio::test]
     async fn falls_back_to_templates_without_a_model() {
-        let composed = compose_message(&NullLlm, EffectPurpose::FirstNudge, Tone::Warm, &facts()).await;
+        let composed =
+            compose_message(&NullLlm, EffectPurpose::FirstNudge, Tone::Warm, &facts()).await;
         assert_eq!(composed.source, CompositionSource::Template);
         assert!(composed.body.contains("Maya"));
         assert!(composed.body.contains("2,400.00"));

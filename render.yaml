@@ -1,0 +1,66 @@
+# One-click deploy: Kindly's API (Rust) and web app (Next.js) on Render.
+#
+# Both services boot in PayPal simulation mode: the whole product works, no
+# credentials are required, and no real money can move. To point the API at a
+# PayPal sandbox instead, set KINDLY_PAYPAL_MODE=live plus PAYPAL_CLIENT_ID,
+# PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID and KINDLY_INVOICER_EMAIL in the
+# dashboard, and make sure KINDLY_PUBLIC_URL is this web service's URL.
+#
+# Storage: the API keeps SQLite in the instance filesystem, so a restart or a
+# deploy starts from a freshly seeded demo studio. A judge always sees the same
+# clean state; add a disk if you want the history to survive instead.
+
+services:
+  - type: web
+    name: kindly-api
+    runtime: rust
+    plan: starter
+    region: oregon
+    buildCommand: cargo build --release -p kindly-server
+    startCommand: ./target/release/kindly serve
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: KINDLY_PAYPAL_MODE
+        value: sim
+      - key: KINDLY_SEED
+        value: "1"
+      - key: KINDLY_SCHEDULER
+        value: "1"
+      # Portal links are opened in the browser, so they must point at the WEB
+      # service. Change this if you rename either service.
+      - key: KINDLY_PUBLIC_URL
+        value: https://kindly-web.onrender.com
+      - key: KINDLY_OWNER_NAME
+        value: Maya Rodriguez
+      - key: KINDLY_OWNER_BUSINESS
+        value: Maya Rodriguez Studio
+      - key: KINDLY_INVOICER_EMAIL
+        value: merchant@kindly.demo
+      # Set this to lock the dashboard down on a public deployment.
+      - key: KINDLY_ADMIN_TOKEN
+        sync: false
+      # Optional: give the agent a voice. Without it, Kindly writes from
+      # deterministic templates.
+      - key: KINDLY_LLM_API_KEY
+        sync: false
+      - key: KINDLY_LLM_MODEL
+        value: gpt-4o-mini
+      - key: RUST_LOG
+        value: info
+
+  - type: web
+    name: kindly-web
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: corepack enable && cd web && pnpm install --frozen-lockfile && pnpm build
+    startCommand: cd web && pnpm start
+    autoDeploy: true
+    envVars:
+      # The Next.js server proxies /api/* to the API service, so the browser
+      # sees one origin and SSE works without CORS.
+      - key: KINDLY_API_ORIGIN
+        value: https://kindly-api.onrender.com
+      - key: NODE_VERSION
+        value: 22

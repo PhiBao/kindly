@@ -12,7 +12,7 @@ use crate::state::AppState;
 use chrono::{Duration, Utc};
 use kindly_core::action::{ActionKind, ActionStatus, AgentAction};
 use kindly_core::client::{Client, PaymentBehavior};
-use kindly_core::ids::{Actor, ActionId, InvoiceId};
+use kindly_core::ids::{ActionId, Actor, InvoiceId};
 use kindly_core::invoice::{Invoice, InvoiceLine, InvoiceStatus, Quantity};
 use kindly_core::ledger::{LedgerEvent, LedgerKind};
 use kindly_core::mandate::{AutonomyLevel, CollectionMandate, ContactWindow, Tone};
@@ -66,7 +66,13 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
     mandate.escalate_after_contacts = 4;
     mandate.stop_after_days_silent = 90;
     mandate.allow_agent_to_agent = true;
-    mandate.tone_ladder = vec![Tone::Warm, Tone::Warm, Tone::Neutral, Tone::Firm, Tone::Formal];
+    mandate.tone_ladder = vec![
+        Tone::Warm,
+        Tone::Warm,
+        Tone::Neutral,
+        Tone::Firm,
+        Tone::Formal,
+    ];
     state.store.save_mandate(&mandate).await?;
 
     let ledger = Ledger::new(&state.store, Some(&state.events));
@@ -160,7 +166,11 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         "1039",
         115_000,
         today - Duration::days(34),
-        vec![("Website copy refresh — 12 pages, two rounds of edits", 1_000, 115_000)],
+        vec![(
+            "Website copy refresh — 12 pages, two rounds of edits",
+            1_000,
+            115_000,
+        )],
         Some("Website copy refresh"),
         now,
     )?;
@@ -170,7 +180,11 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         "1027",
         480_000,
         today - Duration::days(96),
-        vec![("Campaign shoot — 2 days on location, 60 retouched frames", 1_000, 480_000)],
+        vec![(
+            "Campaign shoot — 2 days on location, 60 retouched frames",
+            1_000,
+            480_000,
+        )],
         Some("Campaign shoot"),
         now,
     )?;
@@ -193,7 +207,10 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
     ] {
         let mut invoice = invoice.clone();
         engine::push_invoice_to_paypal(state, &mut invoice, client, work.as_deref()).await?;
-        let subject = format!("Invoice {} from {}", invoice.number, state.config.owner_business);
+        let subject = format!(
+            "Invoice {} from {}",
+            invoice.number, state.config.owner_business
+        );
         engine::send_invoice_via_paypal(
             state,
             &mut invoice,
@@ -260,7 +277,8 @@ fn make_invoice(
         .map(|(description, quantity_thousandths, unit_minor)| {
             Ok(InvoiceLine::new(
                 description,
-                Quantity::from_thousandths(quantity_thousandths).map_err(crate::errors::ApiError::Domain)?,
+                Quantity::from_thousandths(quantity_thousandths)
+                    .map_err(crate::errors::ApiError::Domain)?,
                 Money::new(unit_minor, Currency::Usd),
             ))
         })
@@ -295,7 +313,11 @@ async fn seed_contact_history(
     for index in 0..contacts {
         let at = Utc::now() - Duration::days(days_ago - (index as i64 * 7));
         let tone = Tone::for_contact(index + 1, &mandate.tone_ladder);
-        let first_name = client.name.split_whitespace().next().unwrap_or(&client.name);
+        let first_name = client
+            .name
+            .split_whitespace()
+            .next()
+            .unwrap_or(&client.name);
         let (subject, body) = match index {
             0 => (
                 format!("Invoice {} — quick check-in", invoice.number),
@@ -441,11 +463,7 @@ async fn seed_contact_history(
             .note(
                 Actor::Client,
                 LedgerKind::MessageReceived,
-                format!(
-                    "{} replied: “{}”",
-                    client.display_name(),
-                    text
-                ),
+                format!("{} replied: “{}”", client.display_name(), text),
                 Some(invoice_id),
             )
             .await?;

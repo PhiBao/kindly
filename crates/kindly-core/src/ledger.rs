@@ -1,8 +1,8 @@
 //! The ledger: an append-only, human-readable record of everything that
 //! happened. It is both the audit trail and the product's narrative surface.
 
-use crate::ids::{ClientId, InvoiceId, LedgerEventId};
 use crate::ids::Actor;
+use crate::ids::{ClientId, InvoiceId, LedgerEventId};
 use crate::Timestamp;
 use serde::{Deserialize, Serialize};
 

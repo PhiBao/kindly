@@ -54,13 +54,15 @@ impl Config {
         let data_dir: PathBuf = std::env::var("KINDLY_DATA_DIR")
             .unwrap_or_else(|_| "./data".to_string())
             .into();
-        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            format!("sqlite:{}/kindly.db?mode=rwc", data_dir.display())
-        });
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| format!("sqlite:{}/kindly.db?mode=rwc", data_dir.display()));
         Self {
             database_url,
+            // KINDLY_PORT wins; $PORT is what hosting platforms (Render, Heroku,
+            // Fly) set for a web service.
             port: std::env::var("KINDLY_PORT")
                 .ok()
+                .or_else(|| std::env::var("PORT").ok())
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(8787),
             paypal_mode,
@@ -68,10 +70,13 @@ impl Config {
                 .unwrap_or_else(|_| "https://api-m.sandbox.paypal.com".to_string()),
             paypal_client_id: std::env::var("PAYPAL_CLIENT_ID").unwrap_or_default(),
             paypal_client_secret: std::env::var("PAYPAL_CLIENT_SECRET").unwrap_or_default(),
-            paypal_webhook_id: std::env::var("PAYPAL_WEBHOOK_ID").ok().filter(|s| !s.is_empty()),
+            paypal_webhook_id: std::env::var("PAYPAL_WEBHOOK_ID")
+                .ok()
+                .filter(|s| !s.is_empty()),
             invoicer_email: std::env::var("KINDLY_INVOICER_EMAIL")
                 .unwrap_or_else(|_| "merchant@kindly.demo".to_string()),
-            owner_name: std::env::var("KINDLY_OWNER_NAME").unwrap_or_else(|_| "Maya Rodriguez".to_string()),
+            owner_name: std::env::var("KINDLY_OWNER_NAME")
+                .unwrap_or_else(|_| "Maya Rodriguez".to_string()),
             owner_business: std::env::var("KINDLY_OWNER_BUSINESS")
                 .unwrap_or_else(|_| "Maya Rodriguez Studio".to_string()),
             portal_secret: std::env::var("KINDLY_PORTAL_SECRET")

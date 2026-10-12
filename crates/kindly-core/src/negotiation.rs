@@ -140,7 +140,9 @@ pub fn build_terms(
 
     // Discount: requested, capped by the ceiling, and capped again so the
     // settlement floor stays satisfiable.
-    let discount_bps = params.discount_bps.clamp(0, mandate.max_discount_bps.max(0));
+    let discount_bps = params
+        .discount_bps
+        .clamp(0, mandate.max_discount_bps.max(0));
     let requested_discount = outstanding.bps(discount_bps)?;
     let max_discount_for_floor = outstanding.checked_sub(min_pay_now)?;
     let discount = if requested_discount.minor > max_discount_for_floor.minor {
@@ -181,7 +183,7 @@ pub fn build_terms(
     if installments_wanted > 0 {
         let parts = remaining_after_now.split_evenly(installments_wanted as u8)?;
         let gap = params.days_between_installments.max(1);
-        let max_days = mandate.max_plan_days as u16;
+        let max_days = mandate.max_plan_days;
         // Compress the schedule to fit the mandate window when needed.
         let total_days = gap.saturating_mul(installments_wanted as u16);
         let effective_gap = if total_days > max_days {
@@ -190,9 +192,7 @@ pub fn build_terms(
             gap
         };
         for (idx, part) in parts.into_iter().enumerate() {
-            let due = today + chrono::Duration::days(
-                (effective_gap as i64) * (idx as i64 + 1),
-            );
+            let due = today + chrono::Duration::days((effective_gap as i64) * (idx as i64 + 1));
             installments.push(Installment { amount: part, due });
         }
     }
@@ -292,20 +292,66 @@ impl Stage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum NegoEvent {
-    NudgeSent { at: Timestamp, tone: Tone, channel: Channel },
-    ReplyReceived { at: Timestamp, intent: ReplyIntent },
-    TermsProposed { at: Timestamp, terms: Terms },
-    TermsCountered { at: Timestamp, terms: Terms },
-    TermsAccepted { at: Timestamp, terms: Terms },
-    PlanIssued { at: Timestamp, plan_id: PlanId },
-    PaymentReceived { at: Timestamp, amount: Money, fully_settles: bool },
-    PromiseRecorded { at: Timestamp, on: Day, amount: Money },
-    DisputeRaised { at: Timestamp, reason: String },
-    TimedOut { at: Timestamp },
-    HumanRequested { at: Timestamp, reason: String },
-    HumanOverrode { at: Timestamp, stage: Stage, note: String },
-    Paused { at: Timestamp, days: u16, reason: String },
-    Closed { at: Timestamp, outcome: CloseOutcome },
+    NudgeSent {
+        at: Timestamp,
+        tone: Tone,
+        channel: Channel,
+    },
+    ReplyReceived {
+        at: Timestamp,
+        intent: ReplyIntent,
+    },
+    TermsProposed {
+        at: Timestamp,
+        terms: Terms,
+    },
+    TermsCountered {
+        at: Timestamp,
+        terms: Terms,
+    },
+    TermsAccepted {
+        at: Timestamp,
+        terms: Terms,
+    },
+    PlanIssued {
+        at: Timestamp,
+        plan_id: PlanId,
+    },
+    PaymentReceived {
+        at: Timestamp,
+        amount: Money,
+        fully_settles: bool,
+    },
+    PromiseRecorded {
+        at: Timestamp,
+        on: Day,
+        amount: Money,
+    },
+    DisputeRaised {
+        at: Timestamp,
+        reason: String,
+    },
+    TimedOut {
+        at: Timestamp,
+    },
+    HumanRequested {
+        at: Timestamp,
+        reason: String,
+    },
+    HumanOverrode {
+        at: Timestamp,
+        stage: Stage,
+        note: String,
+    },
+    Paused {
+        at: Timestamp,
+        days: u16,
+        reason: String,
+    },
+    Closed {
+        at: Timestamp,
+        outcome: CloseOutcome,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -415,7 +461,11 @@ pub fn apply(
     use NegoEffect::*;
     let mut effects = Vec::new();
     match event {
-        NegoEvent::NudgeSent { at, tone: _, channel: _ } => {
+        NegoEvent::NudgeSent {
+            at,
+            tone: _,
+            channel: _,
+        } => {
             state.transition(Stage::Contacted)?;
             state.contact_count = state.contact_count.saturating_add(1);
             state.last_contact_at = Some(at);
@@ -452,8 +502,9 @@ pub fn apply(
                 ReplyIntent::ClaimsPaid { reference: _ } => {
                     state.transition(Stage::HumanReview)?;
                     effects.push(NotifyOwner {
-                        summary: "Client says the invoice is already paid — verify before continuing."
-                            .into(),
+                        summary:
+                            "Client says the invoice is already paid — verify before continuing."
+                                .into(),
                         security: false,
                     });
                 }
@@ -564,7 +615,11 @@ pub fn apply(
             state.stage = stage;
             state.touch(at);
         }
-        NegoEvent::Paused { at, days, reason: _ } => {
+        NegoEvent::Paused {
+            at,
+            days,
+            reason: _,
+        } => {
             state.transition(Stage::Paused)?;
             state.paused_until = Some(at + chrono::Duration::days(days as i64));
             state.touch(at);
@@ -601,7 +656,10 @@ pub fn apply(
 }
 
 fn events_should_escalate(stage: &Stage) -> bool {
-    matches!(stage, Stage::Idle | Stage::Negotiating | Stage::TermsProposed)
+    matches!(
+        stage,
+        Stage::Idle | Stage::Negotiating | Stage::TermsProposed
+    )
 }
 
 fn truncate(input: &str, max: usize) -> String {
@@ -675,18 +733,34 @@ mod tests {
             pay_now: usd(120_000),
             discount: usd(0),
             installments: vec![
-                Installment { amount: usd(60_000), due: day(17) },
-                Installment { amount: usd(60_000), due: day(24) },
+                Installment {
+                    amount: usd(60_000),
+                    due: day(17),
+                },
+                Installment {
+                    amount: usd(60_000),
+                    due: day(24),
+                },
             ],
             deadline: Some(day(24)),
         };
-        apply(&mut nego, NegoEvent::TermsProposed { at: at(3), terms: terms.clone() }, &mandate())
-            .unwrap();
+        apply(
+            &mut nego,
+            NegoEvent::TermsProposed {
+                at: at(3),
+                terms: terms.clone(),
+            },
+            &mandate(),
+        )
+        .unwrap();
         assert_eq!(nego.stage, Stage::TermsProposed);
 
         let effects = apply(
             &mut nego,
-            NegoEvent::TermsAccepted { at: at(4), terms: terms.clone() },
+            NegoEvent::TermsAccepted {
+                at: at(4),
+                terms: terms.clone(),
+            },
             &mandate(),
         )
         .unwrap();
@@ -714,7 +788,10 @@ mod tests {
         let terms = Terms {
             pay_now: usd(120_000),
             discount: usd(12_000),
-            installments: vec![Installment { amount: usd(108_000), due: day(24) }],
+            installments: vec![Installment {
+                amount: usd(108_000),
+                due: day(24),
+            }],
             deadline: None,
         };
         assert!(terms.covers(usd(240_000)).unwrap());
@@ -751,7 +828,11 @@ mod tests {
         assert!(effects
             .iter()
             .any(|e| matches!(e, NegoEffect::NotifyOwner { security: true, .. })));
-        assert_eq!(nego.stage, Stage::Contacted, "negotiation continues normally");
+        assert_eq!(
+            nego.stage,
+            Stage::Contacted,
+            "negotiation continues normally"
+        );
     }
 
     #[test]
@@ -867,7 +948,10 @@ mod tests {
             &mut nego,
             NegoEvent::ReplyReceived {
                 at: at(3),
-                intent: ReplyIntent::WillPaySoon { on: None, note: None },
+                intent: ReplyIntent::WillPaySoon {
+                    on: None,
+                    note: None,
+                },
             },
             &mandate(),
         );

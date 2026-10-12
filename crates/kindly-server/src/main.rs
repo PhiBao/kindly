@@ -155,7 +155,9 @@ async fn build_state_from(config: Config) -> Result<Arc<AppState>> {
         }
     };
 
-    Ok(Arc::new(AppState::new(config, store, paypal, llm, simulator)))
+    Ok(Arc::new(AppState::new(
+        config, store, paypal, llm, simulator,
+    )))
 }
 
 async fn build_state() -> Result<Arc<AppState>> {
@@ -181,7 +183,11 @@ async fn serve(flags: Vec<String>) -> Result<()> {
     if state.config.seed_on_boot {
         let summary = seed::seed_demo(&state, reset).await?;
         if summary.already_present {
-            info!(clients = summary.clients, invoices = summary.invoices, "demo data present");
+            info!(
+                clients = summary.clients,
+                invoices = summary.invoices,
+                "demo data present"
+            );
         } else {
             info!(
                 clients = summary.clients,
@@ -222,8 +228,13 @@ async fn serve(flags: Vec<String>) -> Result<()> {
                 &client.email,
                 client.company.as_deref(),
                 invoice.memo.as_deref(),
-                first.map(|line| line.quantity.display()).unwrap_or_else(|| "1".into()).as_str(),
-                first.map(|line| line.unit_price.minor).unwrap_or(invoice.total.minor),
+                first
+                    .map(|line| line.quantity.display())
+                    .unwrap_or_else(|| "1".into())
+                    .as_str(),
+                first
+                    .map(|line| line.unit_price.minor)
+                    .unwrap_or(invoice.total.minor),
             )
             .ok();
             hydrated += 1;

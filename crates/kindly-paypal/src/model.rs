@@ -102,7 +102,10 @@ pub struct PayPalInvoice {
 }
 
 fn money_to_minor(value: &Value) -> Option<i64> {
-    let code = value.get("currency_code").and_then(|c| c.as_str()).unwrap_or("USD");
+    let code = value
+        .get("currency_code")
+        .and_then(|c| c.as_str())
+        .unwrap_or("USD");
     let amount = value.get("value").and_then(|v| v.as_str())?;
     parse_minor(amount, code).ok()
 }
@@ -422,7 +425,10 @@ mod tests {
         let body = PayPalInvoice::build_create_body(&request);
         assert_eq!(body["detail"]["invoice_number"], "1042");
         assert_eq!(body["items"][0]["unit_amount"]["value"], "2400.00");
-        assert_eq!(body["configuration"]["partial_payment"]["allow_partial_payment"], true);
+        assert_eq!(
+            body["configuration"]["partial_payment"]["allow_partial_payment"],
+            true
+        );
     }
 
     #[test]

@@ -55,10 +55,6 @@ impl AppState {
             started_at: Utc::now(),
         }
     }
-
-    pub fn is_sim(&self) -> bool {
-        self.sim.is_some()
-    }
 }
 
 pub type SharedState = Arc<AppState>;

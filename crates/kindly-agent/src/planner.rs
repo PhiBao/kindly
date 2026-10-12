@@ -21,7 +21,9 @@ use kindly_core::action::ActionKind;
 use kindly_core::client::RiskBand;
 use kindly_core::mandate::{Channel, CollectionMandate, Tone};
 use kindly_core::money::Currency;
-use kindly_core::negotiation::{build_terms, EffectPurpose, ReplyIntent, Stage, Terms, TermsParams};
+use kindly_core::negotiation::{
+    build_terms, EffectPurpose, ReplyIntent, Stage, Terms, TermsParams,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -70,7 +72,10 @@ impl InvoiceBrief {
             invoice_number: self.invoice_number.clone(),
             currency: self.currency.clone(),
             amount_outstanding: Some(self.outstanding()),
-            total: Some(kindly_core::money::Money::new(self.total_minor, self.currency())),
+            total: Some(kindly_core::money::Money::new(
+                self.total_minor,
+                self.currency(),
+            )),
             due_date: Some(self.due_date),
             days_overdue: self.days_overdue,
             work_summary: self.work_summary.clone(),
@@ -213,7 +218,10 @@ impl Planner {
                 } else {
                     EffectPurpose::FollowUp
                 };
-                let channel = if brief.client_has_ap_agent && mandate.allow_agent_to_agent && brief.contact_count > 0 {
+                let channel = if brief.client_has_ap_agent
+                    && mandate.allow_agent_to_agent
+                    && brief.contact_count > 0
+                {
                     Channel::AgentToAgent
                 } else {
                     Channel::Portal
@@ -230,7 +238,9 @@ impl Planner {
                     body: composed.body,
                     source: composed.source,
                 });
-                outcome.actions.push(kindly_core::policy::ProposedAction::SendNudge { channel, tone });
+                outcome
+                    .actions
+                    .push(kindly_core::policy::ProposedAction::SendNudge { channel, tone });
                 outcome.narrative.push(why);
             }
             Move::OfferPlan => {
@@ -241,9 +251,13 @@ impl Planner {
                         let mut facts = brief.facts();
                         facts.owner_name = self.owner_name.clone();
                         facts.plan_summary = Some(summarise_terms(&terms, &brief.currency));
-                        let composed =
-                            compose_message(self.llm.as_ref(), EffectPurpose::DeliveryOfPlan, tone, &facts)
-                                .await;
+                        let composed = compose_message(
+                            self.llm.as_ref(),
+                            EffectPurpose::DeliveryOfPlan,
+                            tone,
+                            &facts,
+                        )
+                        .await;
                         outcome.drafts.push(DraftMessage {
                             action_kind: ActionKind::OfferTerms,
                             channel: Channel::Portal,
@@ -253,10 +267,12 @@ impl Planner {
                             body: composed.body,
                             source: composed.source,
                         });
-                        outcome.actions.push(kindly_core::policy::ProposedAction::OfferTerms {
-                            terms,
-                            channel: Channel::Portal,
-                        });
+                        outcome
+                            .actions
+                            .push(kindly_core::policy::ProposedAction::OfferTerms {
+                                terms,
+                                channel: Channel::Portal,
+                            });
                         outcome.narrative.push(why);
                     }
                     Err(error) => {
@@ -266,12 +282,14 @@ impl Planner {
                 }
             }
             Move::Escalate => {
-                outcome.actions.push(kindly_core::policy::ProposedAction::Escalate {
-                    reason: format!(
-                        "{} days past due with {} contact(s) and no resolution.",
-                        brief.days_overdue, brief.contact_count
-                    ),
-                });
+                outcome
+                    .actions
+                    .push(kindly_core::policy::ProposedAction::Escalate {
+                        reason: format!(
+                            "{} days past due with {} contact(s) and no resolution.",
+                            brief.days_overdue, brief.contact_count
+                        ),
+                    });
                 outcome.narrative.push(why);
             }
             Move::AgentToAgent => {
@@ -284,20 +302,23 @@ impl Planner {
                 };
                 match build_terms(brief.outstanding(), &params, mandate, brief.today) {
                     Ok(terms) => {
-                        outcome
-                            .actions
-                            .push(kindly_core::policy::ProposedAction::StartAgentNegotiation { terms });
+                        outcome.actions.push(
+                            kindly_core::policy::ProposedAction::StartAgentNegotiation { terms },
+                        );
                         outcome.narrative.push(why);
                     }
                     Err(error) => {
-                        outcome.idle_reason = Some(format!("Cannot open agent-to-agent talks: {error}"));
+                        outcome.idle_reason =
+                            Some(format!("Cannot open agent-to-agent talks: {error}"));
                     }
                 }
             }
             Move::CloseUncollectible => {
-                outcome.actions.push(kindly_core::policy::ProposedAction::CloseUncollectible {
-                    reason: format!("No response in {} days.", brief.days_overdue),
-                });
+                outcome
+                    .actions
+                    .push(kindly_core::policy::ProposedAction::CloseUncollectible {
+                        reason: format!("No response in {} days.", brief.days_overdue),
+                    });
                 outcome.narrative.push(why);
             }
             Move::Wait => {
@@ -316,14 +337,14 @@ impl Planner {
         let mut moves = Vec::new();
 
         // 1. A reply waiting for a plan is the strongest signal there is.
-        if let Some(reply) = &brief.pending_reply {
-            match reply {
-                ReplyIntent::RequestsPlan { .. }
-                | ReplyIntent::RequestsDiscount { .. }
-                | ReplyIntent::WillPaySoon { .. }
-                | ReplyIntent::Unrelated { .. } => moves.push(Move::OfferPlan),
-                _ => {}
-            }
+        if let Some(
+            ReplyIntent::RequestsPlan { .. }
+            | ReplyIntent::RequestsDiscount { .. }
+            | ReplyIntent::WillPaySoon { .. }
+            | ReplyIntent::Unrelated { .. },
+        ) = &brief.pending_reply
+        {
+            moves.push(Move::OfferPlan);
         }
 
         let days_since_contact = brief
@@ -429,7 +450,10 @@ Return strict JSON: {{"move": "<one of the list>", "reason": "<one sentence, fac
     async fn terms_params(&self, brief: &InvoiceBrief, mandate: &CollectionMandate) -> TermsParams {
         // Deterministic defaults first.
         let mut params = match &brief.pending_reply {
-            Some(ReplyIntent::RequestsPlan { pay_now, installments }) => {
+            Some(ReplyIntent::RequestsPlan {
+                pay_now,
+                installments,
+            }) => {
                 let upfront_bps = pay_now
                     .map(|amount| {
                         if brief.outstanding_minor > 0 {
@@ -550,10 +574,7 @@ fn default_installments(brief: &InvoiceBrief) -> u8 {
 /// A one-line, human summary of agreed or offered terms.
 pub fn summarise_terms(terms: &Terms, currency_code: &str) -> String {
     let currency = Currency::from_code(currency_code).unwrap_or(Currency::Usd);
-    let mut parts = vec![format!(
-        "{} now",
-        terms.pay_now.display_with_symbol()
-    )];
+    let mut parts = vec![format!("{} now", terms.pay_now.display_with_symbol())];
     for (idx, installment) in terms.installments.iter().enumerate() {
         let _ = currency;
         parts.push(format!(
@@ -647,12 +668,17 @@ mod tests {
         match &outcome.actions[0] {
             kindly_core::policy::ProposedAction::OfferTerms { terms, .. } => {
                 assert!(terms.covers(b.outstanding()).unwrap());
-                assert!(terms.upfront_bps(b.outstanding()).unwrap() >= mandate().min_upfront_settlement_bps);
+                assert!(
+                    terms.upfront_bps(b.outstanding()).unwrap()
+                        >= mandate().min_upfront_settlement_bps
+                );
                 assert!(terms.installment_count() <= mandate().max_installments);
             }
             other => panic!("expected an offer, got {other:?}"),
         }
-        assert!(outcome.drafts[0].body.contains("plan") || outcome.drafts[0].body.contains("agreed"));
+        assert!(
+            outcome.drafts[0].body.contains("plan") || outcome.drafts[0].body.contains("agreed")
+        );
     }
 
     #[tokio::test]
@@ -663,10 +689,10 @@ mod tests {
         b.contact_count = 5; // beyond the escalation threshold
         b.last_contact_at = Some(chrono::Utc::now() - chrono::Duration::days(30));
         let outcome = planner.plan(&b, &mandate()).await;
-        assert!(outcome.actions.iter().any(|a| matches!(
-            a,
-            kindly_core::policy::ProposedAction::Escalate { .. }
-        )));
+        assert!(outcome
+            .actions
+            .iter()
+            .any(|a| matches!(a, kindly_core::policy::ProposedAction::Escalate { .. })));
 
         let mut silent = brief();
         silent.client_has_ap_agent = false;

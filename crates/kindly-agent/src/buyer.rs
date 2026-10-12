@@ -53,7 +53,8 @@ impl BuyerMandate {
             policy: vec![
                 "Payment runs execute on Fridays.".to_string(),
                 "Purchases are matched against the engagement before release.".to_string(),
-                "Anything above $1,200 in a single release needs the finance lead's approval.".to_string(),
+                "Anything above $1,200 in a single release needs the finance lead's approval."
+                    .to_string(),
             ],
             max_unapproved_cash_minor: 120_000, // $1,200 needs no sign-off
             max_total_cash_minor: 1_000_000,
@@ -66,11 +67,19 @@ impl BuyerMandate {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuyerDecision {
-    Accept { reason: String },
-    Counter { reason: String },
-    Reject { reason: String },
+    Accept {
+        reason: String,
+    },
+    Counter {
+        reason: String,
+    },
+    Reject {
+        reason: String,
+    },
     /// Terms are acceptable, but a human must approve the cash release.
-    NeedsApproval { reason: String },
+    NeedsApproval {
+        reason: String,
+    },
 }
 
 impl BuyerDecision {
@@ -136,7 +145,11 @@ impl BuyerAgent {
     }
 
     fn attestation(&self) -> MandateAttestation {
-        MandateAttestation::sign(&self.signing_key, &self.mandate.agent_id, &self.mandate_json())
+        MandateAttestation::sign(
+            &self.signing_key,
+            &self.mandate.agent_id,
+            &self.mandate_json(),
+        )
     }
 
     /// Sign and wrap a message for sending.
@@ -176,7 +189,10 @@ impl BuyerAgent {
             BuyerReply::Info => KatpMessage::Info { note },
         };
         // Send the mandate attestation alongside a binding message.
-        let include_mandate = matches!(message, KatpMessage::Accept { .. } | KatpMessage::Counter { .. });
+        let include_mandate = matches!(
+            message,
+            KatpMessage::Accept { .. } | KatpMessage::Counter { .. }
+        );
         (self.envelope(message, include_mandate), decision)
     }
 
@@ -245,14 +261,14 @@ impl BuyerAgent {
     ) -> TermsProposal {
         let pay_now = self.mandate.max_unapproved_cash_minor.min(balance_minor);
         // The discount we ask for has to come out of what we pay, not on top.
-        let discount_minor = (balance_minor as i128 * self.mandate.discount_ask_bps as i128 / 10_000)
-            as i64;
+        let discount_minor =
+            (balance_minor as i128 * self.mandate.discount_ask_bps as i128 / 10_000) as i64;
         let remainder = (balance_minor - pay_now - discount_minor).max(0);
-        let target_installments = self
-            .mandate
-            .max_installments
-            .max(1)
-            .min(if remainder > 0 { 3 } else { 0 });
+        let target_installments =
+            self.mandate
+                .max_installments
+                .max(1)
+                .min(if remainder > 0 { 3 } else { 0 });
 
         let mut installments = Vec::new();
         if target_installments > 0 && remainder > 0 {
@@ -267,7 +283,11 @@ impl BuyerAgent {
                 }
                 installments.push(ProposedInstallment {
                     amount_minor: amount,
-                    due: next_payment_run(today, &self.mandate.payment_run_weekdays, idx as i64 + 1),
+                    due: next_payment_run(
+                        today,
+                        &self.mandate.payment_run_weekdays,
+                        idx as i64 + 1,
+                    ),
                 });
             }
         }
@@ -281,23 +301,33 @@ impl BuyerAgent {
         }
     }
 
-    async fn note_for(&self, decision: &BuyerDecision, reply: &BuyerReply, incoming: &KatpMessage) -> String {
-        let fallback = match reply {
-            BuyerReply::Counter(terms) => format!(
+    async fn note_for(
+        &self,
+        decision: &BuyerDecision,
+        reply: &BuyerReply,
+        incoming: &KatpMessage,
+    ) -> String {
+        let fallback =
+            match reply {
+                BuyerReply::Counter(terms) => {
+                    format!(
                 "{} can release ${} on the next Friday run, then ${} across {} later run{}.",
                 self.mandate.company,
                 terms.pay_now_minor / 100,
                 terms.installments.iter().map(|i| i.amount_minor / 100).sum::<i64>(),
                 terms.installments.len(),
                 if terms.installments.len() == 1 { "" } else { "s" },
-            ),
-            BuyerReply::Accept(_) => format!(
-                "{} accepts — the first payment goes out with Friday's run.",
-                self.mandate.company
-            ),
-            BuyerReply::Reject(reason) => format!("{} can't agree to that: {reason}.", self.mandate.company),
-            BuyerReply::Info => "Acknowledged.".to_string(),
-        };
+            )
+                }
+                BuyerReply::Accept(_) => format!(
+                    "{} accepts — the first payment goes out with Friday's run.",
+                    self.mandate.company
+                ),
+                BuyerReply::Reject(reason) => {
+                    format!("{} can't agree to that: {reason}.", self.mandate.company)
+                }
+                BuyerReply::Info => "Acknowledged.".to_string(),
+            };
 
         if !self.llm.is_enabled() {
             return fallback;
@@ -392,7 +422,10 @@ mod tests {
         assert!(matches!(decision, BuyerDecision::Accept { .. }));
         assert!(matches!(envelope.message, KatpMessage::Accept { .. }));
         assert!(envelope.verify());
-        assert!(envelope.mandate.is_some(), "binding messages carry the mandate");
+        assert!(
+            envelope.mandate.is_some(),
+            "binding messages carry the mandate"
+        );
     }
 
     #[tokio::test]

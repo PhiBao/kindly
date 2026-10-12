@@ -209,12 +209,13 @@ impl SimPayPal {
         let resource = invoice.to_resource();
         state.invoices.insert(invoice_id.to_string(), invoice);
 
-        let event_type = if resource["status"] == "PAID" {
-            "INVOICING.INVOICE.PAID"
-        } else {
-            "INVOICING.INVOICE.PAID"
-        };
-        Ok(vec![Self::envelope(event_type, "invoice", resource)])
+        // PayPal reports both partial and full payments with the same event
+        // type; the resource carries the new totals.
+        Ok(vec![Self::envelope(
+            "INVOICING.INVOICE.PAID",
+            "invoice",
+            resource,
+        )])
     }
 
     /// A client pays a portal order; returns the capture resource and the
@@ -361,14 +362,25 @@ impl PayPalApi for SimPayPal {
             payer_view_url: None,
         };
         let resource = invoice.to_resource();
-        self.state.lock().expect("sim state").invoices.insert(id, invoice);
+        self.state
+            .lock()
+            .expect("sim state")
+            .invoices
+            .insert(id, invoice);
         PayPalInvoice::from_resource(&resource)
     }
 
-    async fn send_invoice(&self, paypal_invoice_id: &str, _subject: &str, _note: &str) -> PayPalResult<()> {
+    async fn send_invoice(
+        &self,
+        paypal_invoice_id: &str,
+        _subject: &str,
+        _note: &str,
+    ) -> PayPalResult<()> {
         let mut state = self.state.lock().expect("sim state");
         let mut invoice = Self::invoice_or_err(&state, paypal_invoice_id)?;
-        if invoice.status != PayPalInvoiceStatus::Draft && invoice.status != PayPalInvoiceStatus::Scheduled {
+        if invoice.status != PayPalInvoiceStatus::Draft
+            && invoice.status != PayPalInvoiceStatus::Scheduled
+        {
             return Err(PayPalError::Api {
                 status: 422,
                 issue: "INVOICE_ALREADY_SENT".into(),
@@ -376,11 +388,18 @@ impl PayPalApi for SimPayPal {
             });
         }
         invoice.status = PayPalInvoiceStatus::Sent;
-        state.invoices.insert(paypal_invoice_id.to_string(), invoice);
+        state
+            .invoices
+            .insert(paypal_invoice_id.to_string(), invoice);
         Ok(())
     }
 
-    async fn remind_invoice(&self, paypal_invoice_id: &str, _subject: &str, _note: &str) -> PayPalResult<()> {
+    async fn remind_invoice(
+        &self,
+        paypal_invoice_id: &str,
+        _subject: &str,
+        _note: &str,
+    ) -> PayPalResult<()> {
         let mut state = self.state.lock().expect("sim state");
         let mut invoice = Self::invoice_or_err(&state, paypal_invoice_id)?;
         let today = Utc::now().date_naive();
@@ -398,7 +417,9 @@ impl PayPalApi for SimPayPal {
             });
         }
         invoice.reminders.push(Utc::now());
-        state.invoices.insert(paypal_invoice_id.to_string(), invoice);
+        state
+            .invoices
+            .insert(paypal_invoice_id.to_string(), invoice);
         Ok(())
     }
 
@@ -432,7 +453,9 @@ impl PayPalApi for SimPayPal {
         } else {
             PayPalInvoiceStatus::PartiallyPaid
         };
-        state.invoices.insert(paypal_invoice_id.to_string(), invoice);
+        state
+            .invoices
+            .insert(paypal_invoice_id.to_string(), invoice);
         Ok(())
     }
 
@@ -446,7 +469,9 @@ impl PayPalApi for SimPayPal {
         let mut state = self.state.lock().expect("sim state");
         let mut invoice = Self::invoice_or_err(&state, paypal_invoice_id)?;
         invoice.status = PayPalInvoiceStatus::Cancelled;
-        state.invoices.insert(paypal_invoice_id.to_string(), invoice);
+        state
+            .invoices
+            .insert(paypal_invoice_id.to_string(), invoice);
         Ok(())
     }
 
@@ -454,11 +479,11 @@ impl PayPalApi for SimPayPal {
         // A valid 1x1 PNG so the API surface stays honest without shipping
         // binary fixtures around.
         const TINY_PNG: &[u8] = &[
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
-            0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
-            0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
-            0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
-            0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
         Ok(TINY_PNG.to_vec())
     }
@@ -485,7 +510,11 @@ impl PayPalApi for SimPayPal {
             status: "CREATED".into(),
             captured: None,
         };
-        self.state.lock().expect("sim state").orders.insert(id.clone(), order);
+        self.state
+            .lock()
+            .expect("sim state")
+            .orders
+            .insert(id.clone(), order);
         Ok(PayPalOrder {
             id: id.clone(),
             status: "CREATED".into(),
@@ -502,7 +531,10 @@ impl PayPalApi for SimPayPal {
         Ok(PayPalCapture {
             order_id: order_id.to_string(),
             capture_id: capture["id"].as_str().unwrap_or_default().to_string(),
-            status: capture["status"].as_str().unwrap_or("COMPLETED").to_string(),
+            status: capture["status"]
+                .as_str()
+                .unwrap_or("COMPLETED")
+                .to_string(),
             amount_minor,
             currency_code: capture["amount"]["currency_code"]
                 .as_str()
@@ -517,13 +549,14 @@ impl PayPalApi for SimPayPal {
         headers: &WebhookHeaders,
         raw_body: &[u8],
     ) -> PayPalResult<VerifiedEvent> {
-        let signature = headers
-            .sim_signature
-            .clone()
-            .ok_or_else(|| PayPalError::SignatureInvalid("sim deliveries require x-kindly-sim-signature".into()))?;
+        let signature = headers.sim_signature.clone().ok_or_else(|| {
+            PayPalError::SignatureInvalid("sim deliveries require x-kindly-sim-signature".into())
+        })?;
         let expected = self.sign_body(raw_body);
         if !constant_time_eq(signature.as_bytes(), expected.as_bytes()) {
-            return Err(PayPalError::SignatureInvalid("sim signature mismatch".into()));
+            return Err(PayPalError::SignatureInvalid(
+                "sim signature mismatch".into(),
+            ));
         }
         let event: Value = serde_json::from_slice(raw_body)
             .map_err(|e| PayPalError::Shape(format!("sim webhook body is not json: {e}")))?;
@@ -588,7 +621,10 @@ mod tests {
         assert_eq!(invoice.status, PayPalInvoiceStatus::Draft);
         assert_eq!(invoice.total_minor, Some(240_000));
 
-        paypal.send_invoice(&invoice.id, "Invoice 1042", "Thanks!").await.unwrap();
+        paypal
+            .send_invoice(&invoice.id, "Invoice 1042", "Thanks!")
+            .await
+            .unwrap();
         let sent = paypal.show_invoice(&invoice.id).await.unwrap();
         assert_eq!(sent.status, PayPalInvoiceStatus::Sent);
 
@@ -634,7 +670,10 @@ mod tests {
         let verified = paypal.verify_webhook(&good, &body).await.unwrap();
         assert_eq!(verified.event_type, "INVOICING.INVOICE.PAID");
         assert!(verified.verified);
-        assert_eq!(verified.paypal_invoice_id().as_deref(), Some(invoice.id.as_str()));
+        assert_eq!(
+            verified.paypal_invoice_id().as_deref(),
+            Some(invoice.id.as_str())
+        );
 
         let bad = WebhookHeaders {
             sim_signature: Some("not-a-signature".into()),

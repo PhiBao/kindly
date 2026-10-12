@@ -151,8 +151,7 @@ pub fn attribute(
             kind: CauseKind::PlanSettled,
             confidence: Confidence::High,
             action_ids: vec![plan_action.id],
-            rationale: "The payment followed the plan Kindly negotiated and issued."
-                .to_string(),
+            rationale: "The payment followed the plan Kindly negotiated and issued.".to_string(),
             days_to_paid,
             baseline_days,
             days_saved,
@@ -161,12 +160,9 @@ pub fn attribute(
     }
 
     // 2. Reminder-led: the most recent client-facing action inside the window.
-    let last_contact = sorted
-        .iter()
-        .rev()
-        .find(|a| {
-            matches!(a.kind, ActionKind::Nudge | ActionKind::OfferTerms) && a.at <= settlement.at
-        });
+    let last_contact = sorted.iter().rev().find(|a| {
+        matches!(a.kind, ActionKind::Nudge | ActionKind::OfferTerms) && a.at <= settlement.at
+    });
 
     if let Some(contact) = last_contact {
         let gap = (settlement.at - contact.at).num_days();
@@ -250,7 +246,8 @@ mod tests {
 
     fn settled_invoice() -> Invoice {
         let mut inv = invoice();
-        inv.apply_payment(Money::new(240_000, Currency::Usd), ts(20)).unwrap();
+        inv.apply_payment(Money::new(240_000, Currency::Usd), ts(20))
+            .unwrap();
         inv
     }
 

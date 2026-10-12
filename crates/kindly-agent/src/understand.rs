@@ -123,7 +123,10 @@ pub async fn read_reply(
 
     let (intent, source) = match model_intent {
         Some(intent) => (intent, ReadingSource::Model),
-        None => (classify_heuristically(text, currency, today), ReadingSource::Heuristic),
+        None => (
+            classify_heuristically(text, currency, today),
+            ReadingSource::Heuristic,
+        ),
     };
 
     // A deterministic scanner always outranks the model: if a message tries to
@@ -248,17 +251,47 @@ async fn classify_with_model(
 pub fn classify_heuristically(text: &str, currency: Currency, today: NaiveDate) -> ReplyIntent {
     let lowered = text.to_lowercase();
 
-    if contains_any(&lowered, &["already paid", "i've paid", "ive paid", "we paid", "payment sent", "sent the payment", "transferred", "paid this invoice"]) {
+    if contains_any(
+        &lowered,
+        &[
+            "already paid",
+            "i've paid",
+            "ive paid",
+            "we paid",
+            "payment sent",
+            "sent the payment",
+            "transferred",
+            "paid this invoice",
+        ],
+    ) {
         return ReplyIntent::ClaimsPaid {
             reference: extract_reference(text),
         };
     }
-    if contains_any(&lowered, &["wrong", "incorrect", "not right", "disput", "disagree", "incomplete", "wasn't delivered", "was not delivered", "late delivery", "overcharg", "refund"]) {
+    if contains_any(
+        &lowered,
+        &[
+            "wrong",
+            "incorrect",
+            "not right",
+            "disput",
+            "disagree",
+            "incomplete",
+            "wasn't delivered",
+            "was not delivered",
+            "late delivery",
+            "overcharg",
+            "refund",
+        ],
+    ) {
         return ReplyIntent::DisputesInvoice {
             reason: excerpt(text, 240),
         };
     }
-    if contains_any(&lowered, &["discount", "reduce", "lower", "knock off", "less than"]) {
+    if contains_any(
+        &lowered,
+        &["discount", "reduce", "lower", "knock off", "less than"],
+    ) {
         return ReplyIntent::RequestsDiscount {
             bps: extract_percentage_bps(text).unwrap_or(500),
         };
@@ -298,23 +331,58 @@ pub fn classify_heuristically(text: &str, currency: Currency, today: NaiveDate) 
             installments,
         };
     }
-    if contains_any(&lowered, &["contract", "invoice copy", "send me", "documentation", "receipt", "statement"]) {
-        return ReplyIntent::RequestsDocuments {
-            what: None,
-        };
+    if contains_any(
+        &lowered,
+        &[
+            "contract",
+            "invoice copy",
+            "send me",
+            "documentation",
+            "receipt",
+            "statement",
+        ],
+    ) {
+        return ReplyIntent::RequestsDocuments { what: None };
     }
     if let Some(on) = extract_date(&lowered, today) {
         if contains_any(&lowered, &["pay", "payment", "settle", "transfer", "send"]) {
-            return ReplyIntent::WillPaySoon { on: Some(on), note: None };
+            return ReplyIntent::WillPaySoon {
+                on: Some(on),
+                note: None,
+            };
         }
     }
-    if contains_any(&lowered, &["will pay", "we'll pay", "we will pay", "payable", "on our next run", "next payment run", "pay day"]) {
+    if contains_any(
+        &lowered,
+        &[
+            "will pay",
+            "we'll pay",
+            "we will pay",
+            "payable",
+            "on our next run",
+            "next payment run",
+            "pay day",
+        ],
+    ) {
         return ReplyIntent::WillPaySoon {
             on: extract_date(&lowered, today),
             note: None,
         };
     }
-    if contains_any(&lowered, &["friday", "monday", "tuesday", "wednesday", "thursday", "saturday", "sunday", "next week", "end of month"]) {
+    if contains_any(
+        &lowered,
+        &[
+            "friday",
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "saturday",
+            "sunday",
+            "next week",
+            "end of month",
+        ],
+    ) {
         return ReplyIntent::WillPaySoon {
             on: extract_date(&lowered, today),
             note: None,
@@ -416,7 +484,9 @@ fn extract_amounts(text: &str, currency: Currency) -> Vec<Money> {
             continue;
         }
         let cleaned: String = token
-            .trim_matches(|c: char| !c.is_ascii_digit() && c != '.' && c != ',' && c != '$' && c != '€' && c != '£')
+            .trim_matches(|c: char| {
+                !c.is_ascii_digit() && c != '.' && c != ',' && c != '$' && c != '€' && c != '£'
+            })
             .trim_start_matches(['$', '€', '£'])
             .replace(',', "");
         if cleaned.is_empty() || !cleaned.contains(|c: char| c.is_ascii_digit()) {
@@ -429,10 +499,6 @@ fn extract_amounts(text: &str, currency: Currency) -> Vec<Money> {
         }
     }
     out
-}
-
-fn extract_amount(text: &str, currency: Currency) -> Option<Money> {
-    extract_amounts(text, currency).into_iter().next()
 }
 
 fn extract_small_integer(text: &str) -> Option<u8> {
@@ -496,15 +562,15 @@ mod tests {
     fn heuristics_classify_common_replies() {
         let currency = Currency::Usd;
         assert!(matches!(
-            classify_heuristically("We already paid this invoice, reference INV-88421.", currency, today()),
-            ReplyIntent::ClaimsPaid { .. }
-        ));
-        assert!(matches!(
             classify_heuristically(
-                "Can we split this over two months?",
+                "We already paid this invoice, reference INV-88421.",
                 currency,
                 today()
             ),
+            ReplyIntent::ClaimsPaid { .. }
+        ));
+        assert!(matches!(
+            classify_heuristically("Can we split this over two months?", currency, today()),
             ReplyIntent::RequestsPlan { .. }
         ));
         assert!(matches!(
@@ -564,7 +630,10 @@ mod tests {
         )
         .await;
         match reading.intent {
-            ReplyIntent::RequestsPlan { pay_now, installments } => {
+            ReplyIntent::RequestsPlan {
+                pay_now,
+                installments,
+            } => {
                 assert_eq!(pay_now.map(|m| m.minor), Some(120_000));
                 assert_eq!(installments, Some(2));
             }
@@ -608,7 +677,10 @@ mod regression_tests {
             today(),
         );
         match intent {
-            ReplyIntent::RequestsPlan { pay_now, installments } => {
+            ReplyIntent::RequestsPlan {
+                pay_now,
+                installments,
+            } => {
                 assert_eq!(pay_now.map(|m| m.minor), Some(57_500));
                 assert_eq!(installments, Some(1));
             }
@@ -619,7 +691,8 @@ mod regression_tests {
     #[test]
     fn promises_still_win_over_plan_talk() {
         // "we'll pay on Friday" must not be read as a plan request.
-        let intent = classify_heuristically("We'll pay the balance on Friday.", Currency::Usd, today());
+        let intent =
+            classify_heuristically("We'll pay the balance on Friday.", Currency::Usd, today());
         assert!(
             matches!(intent, ReplyIntent::WillPaySoon { .. }),
             "got {intent:?}"

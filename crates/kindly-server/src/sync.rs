@@ -143,7 +143,11 @@ pub async fn process_event(state: &AppState, event: &VerifiedEvent) -> ApiResult
                     LedgerKind::PayPalWebhook,
                     format!(
                         "Capture {} completed{}",
-                        if capture_id.is_empty() { "(no id)" } else { &capture_id },
+                        if capture_id.is_empty() {
+                            "(no id)"
+                        } else {
+                            &capture_id
+                        },
                         event
                             .order_id()
                             .map(|order| format!(" for order {order}"))
@@ -165,7 +169,8 @@ pub async fn process_event(state: &AppState, event: &VerifiedEvent) -> ApiResult
             if !capture_id.is_empty() && state.store.has_payment_ref(&capture_id).await? {
                 return Ok(());
             }
-            let (amount_minor, currency_code) = event_amount_minor(event).unwrap_or((0, "USD".into()));
+            let (amount_minor, currency_code) =
+                event_amount_minor(event).unwrap_or((0, "USD".into()));
             if amount_minor <= 0 {
                 return Ok(());
             }
@@ -203,12 +208,10 @@ pub async fn process_event(state: &AppState, event: &VerifiedEvent) -> ApiResult
         }
         WebhookFact::InvoiceSent | WebhookFact::InvoiceCreated | WebhookFact::InvoiceUpdated => {
             if let Some(paypal_invoice_id) = event.paypal_invoice_id() {
-                if let Some(mut invoice) = state.store.invoice_by_paypal_id(&paypal_invoice_id).await? {
-                    if let Some(status) = event
-                        .resource
-                        .get("status")
-                        .and_then(|v| v.as_str())
-                    {
+                if let Some(mut invoice) =
+                    state.store.invoice_by_paypal_id(&paypal_invoice_id).await?
+                {
+                    if let Some(status) = event.resource.get("status").and_then(|v| v.as_str()) {
                         invoice.paypal_status = Some(status.to_string());
                         if status == "SENT" && invoice.issued_at.is_none() {
                             invoice.mark_sent(Utc::now());
@@ -220,7 +223,9 @@ pub async fn process_event(state: &AppState, event: &VerifiedEvent) -> ApiResult
         }
         WebhookFact::InvoiceCancelled => {
             if let Some(paypal_invoice_id) = event.paypal_invoice_id() {
-                if let Some(mut invoice) = state.store.invoice_by_paypal_id(&paypal_invoice_id).await? {
+                if let Some(mut invoice) =
+                    state.store.invoice_by_paypal_id(&paypal_invoice_id).await?
+                {
                     invoice.mark_cancelled(Utc::now());
                     invoice.paypal_status = Some("CANCELLED".to_string());
                     state.store.upsert_invoice(&invoice, None).await?;
@@ -274,7 +279,8 @@ pub async fn mirror_paypal_invoice(state: &AppState, paypal: &PayPalInvoice) -> 
         if let Some(paid) = paypal.amount_paid_minor {
             if paid > invoice.amount_paid.minor {
                 let delta = paid - invoice.amount_paid.minor;
-                let currency = Currency::from_code(&paypal.currency_code).unwrap_or(invoice.currency);
+                let currency =
+                    Currency::from_code(&paypal.currency_code).unwrap_or(invoice.currency);
                 let invoice_id = invoice.id;
                 let parent = invoice.parent_invoice_id;
                 let amount = kindly_core::money::Money::new(delta, currency);
@@ -330,12 +336,13 @@ pub async fn reconcile(state: &AppState) -> ApiResult<usize> {
             }
         }
         // Also reconcile any plan instalments.
-        if let Some(sessions) = state.store.a2a_sessions_for_invoice(invoice.id).await.ok() {
-            for session in sessions {
-                if session.status == crate::a2a::status::PLAN_ISSUED {
-                    settle_a2a_sessions(state, invoice.id).await?;
-                }
-            }
+        if state
+            .store
+            .a2a_sessions_for_invoice(invoice.id)
+            .await
+            .is_ok()
+        {
+            settle_a2a_sessions(state, invoice.id).await?;
         }
     }
     if checked > 0 {

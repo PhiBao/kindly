@@ -83,7 +83,10 @@ impl ActionStatus {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            ActionStatus::Executed | ActionStatus::Failed | ActionStatus::Blocked | ActionStatus::Rejected
+            ActionStatus::Executed
+                | ActionStatus::Failed
+                | ActionStatus::Blocked
+                | ActionStatus::Rejected
         )
     }
 }

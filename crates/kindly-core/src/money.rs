@@ -46,7 +46,9 @@ impl Currency {
             "USD" => Ok(Currency::Usd),
             "EUR" => Ok(Currency::Eur),
             "GBP" => Ok(Currency::Gbp),
-            other => Err(CoreError::InvalidMoney(format!("unsupported currency {other}"))),
+            other => Err(CoreError::InvalidMoney(format!(
+                "unsupported currency {other}"
+            ))),
         }
     }
 }
@@ -78,7 +80,9 @@ impl Money {
         major
             .checked_mul(scale)
             .map(|minor| Self { minor, currency })
-            .ok_or(CoreError::Overflow { context: "from_major" })
+            .ok_or(CoreError::Overflow {
+                context: "from_major",
+            })
     }
 
     /// Parse a decimal string such as `"1234.56"`, `"1,234.56"` or `"1234"`.
@@ -172,7 +176,9 @@ impl Money {
     }
 
     pub fn sum<I: IntoIterator<Item = Money>>(amounts: I, currency: Currency) -> CoreResult<Money> {
-        amounts.into_iter().try_fold(Money::zero(currency), |acc, m| acc.checked_add(m))
+        amounts
+            .into_iter()
+            .try_fold(Money::zero(currency), |acc, m| acc.checked_add(m))
     }
 
     /// Multiply by a percentage expressed in basis points (100 bps = 1 %).
@@ -194,7 +200,9 @@ impl Money {
             return Err(CoreError::Validation("cannot split into zero parts".into()));
         }
         if self.minor < 0 {
-            return Err(CoreError::Validation("cannot split a negative amount".into()));
+            return Err(CoreError::Validation(
+                "cannot split a negative amount".into(),
+            ));
         }
         let parts = n as i64;
         let base = self.minor / parts;
@@ -212,7 +220,13 @@ impl Money {
         let scale = 10i64.pow(self.currency.exponent());
         let sign = if self.minor < 0 { "-" } else { "" };
         let abs = self.minor.abs();
-        format!("{}{}.{:0width$}", sign, abs / scale, abs % scale, width = self.currency.exponent() as usize)
+        format!(
+            "{}{}.{:0width$}",
+            sign,
+            abs / scale,
+            abs % scale,
+            width = self.currency.exponent() as usize
+        )
     }
 
     /// Human display with thousands separators, e.g. `"1,234.56"`.
@@ -255,7 +269,7 @@ impl FromStr for Money {
 fn group_thousands(digits: &str) -> String {
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (idx, ch) in digits.chars().enumerate() {
-        if idx > 0 && (digits.len() - idx) % 3 == 0 {
+        if idx > 0 && (digits.len() - idx).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);
@@ -269,7 +283,11 @@ fn divide_round_half_away_from_zero(numerator: i128, denominator: i128) -> i128 
     let magnitude = numerator.abs();
     let quotient = magnitude / denominator;
     let remainder = magnitude % denominator;
-    let rounded = if remainder * 2 >= denominator { quotient + 1 } else { quotient };
+    let rounded = if remainder * 2 >= denominator {
+        quotient + 1
+    } else {
+        quotient
+    };
     sign * rounded
 }
 
@@ -300,7 +318,7 @@ mod tests {
         let m = Money::new(240_000, Currency::Usd); // $2,400.00
         assert_eq!(m.bps(5000).unwrap(), Money::new(120_000, Currency::Usd)); // 50 %
         assert_eq!(m.bps(1000).unwrap(), Money::new(24_000, Currency::Usd)); // 10 %
-        // Exactly half a cent rounds away from zero.
+                                                                             // Exactly half a cent rounds away from zero.
         assert_eq!(Money::new(100, Currency::Usd).bps(150).unwrap().minor, 2);
         assert_eq!(Money::new(100, Currency::Usd).bps(149).unwrap().minor, 1);
         assert!(Money::new(100, Currency::Usd).bps(200_000_000).is_err());

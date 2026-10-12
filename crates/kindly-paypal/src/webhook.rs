@@ -45,13 +45,13 @@ pub fn event_amount_minor(event: &VerifiedEvent) -> Option<(i64, String)> {
             .unwrap_or("USD")
             .to_string();
         let value = amount.get("value").and_then(Value::as_str)?;
-        return crate::model::parse_minor(value, &currency).ok().map(|m| (m, currency));
+        return crate::model::parse_minor(value, &currency)
+            .ok()
+            .map(|m| (m, currency));
     }
     // Invoice resources: prefer the delta between total paid and what was paid
     // before, which the caller resolves; here we return the paid total.
-    let breakdown = resource
-        .get("amount")
-        .and_then(|a| a.get("breakdown"))?;
+    let breakdown = resource.get("amount").and_then(|a| a.get("breakdown"))?;
     let currency = resource
         .get("detail")
         .and_then(|d| d.get("currency_code"))
@@ -87,20 +87,22 @@ mod tests {
 
     #[test]
     fn extracts_amounts_from_capture_resources() {
-        let event: VerifiedEvent =
-            serde_json::from_value(serde_json::json!({
-                "event_id": "WH-1",
-                "event_type": "PAYMENT.CAPTURE.COMPLETED",
-                "resource_type": "capture",
-                "resource": {
-                    "id": "CAP-1",
-                    "amount": {"currency_code": "USD", "value": "1200.00"}
-                },
-                "verified": true,
-                "raw": {},
-                "received_at": null
-            }))
-            .unwrap();
-        assert_eq!(event_amount_minor(&event), Some((120_000, "USD".to_string())));
+        let event: VerifiedEvent = serde_json::from_value(serde_json::json!({
+            "event_id": "WH-1",
+            "event_type": "PAYMENT.CAPTURE.COMPLETED",
+            "resource_type": "capture",
+            "resource": {
+                "id": "CAP-1",
+                "amount": {"currency_code": "USD", "value": "1200.00"}
+            },
+            "verified": true,
+            "raw": {},
+            "received_at": null
+        }))
+        .unwrap();
+        assert_eq!(
+            event_amount_minor(&event),
+            Some((120_000, "USD".to_string()))
+        );
     }
 }

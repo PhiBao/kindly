@@ -41,7 +41,11 @@ impl TermsProposal {
     pub fn total_minor(&self) -> i64 {
         self.pay_now_minor
             + self.discount_minor
-            + self.installments.iter().map(|i| i.amount_minor).sum::<i64>()
+            + self
+                .installments
+                .iter()
+                .map(|i| i.amount_minor)
+                .sum::<i64>()
     }
 }
 

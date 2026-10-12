@@ -9,9 +9,9 @@ use chrono::{DateTime, NaiveDate, Utc};
 use kindly_core::action::{ActionKind, ActionStatus, AgentAction};
 use kindly_core::client::{Client, PaymentBehavior};
 use kindly_core::ids::{
-    ActionId, Actor, ClientId, InvoiceId, InvoiceLineId, LedgerEventId, MessageId, PlanId, ThreadId,
+    ActionId, Actor, ClientId, InvoiceId, LedgerEventId, MessageId, PlanId, ThreadId,
 };
-use kindly_core::invoice::{Invoice, InvoiceLine, InvoiceStatus, Quantity};
+use kindly_core::invoice::{Invoice, InvoiceLine, InvoiceStatus};
 use kindly_core::ledger::{LedgerEvent, LedgerKind};
 use kindly_core::mandate::CollectionMandate;
 use kindly_core::money::{Currency, Money};
@@ -50,10 +50,6 @@ pub struct Store {
 impl Store {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
-    }
-
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
     }
 
     // ── clients ──────────────────────────────────────────────────────
@@ -200,15 +196,10 @@ impl Store {
         rows.iter().map(|row| self.row_to_invoice(row)).collect()
     }
 
-    pub async fn invoices_for_client(&self, client_id: ClientId) -> ApiResult<Vec<Invoice>> {
-        let rows = sqlx::query("SELECT * FROM invoices WHERE client_id = ?1 ORDER BY created_at DESC")
-            .bind(client_id.to_string())
-            .fetch_all(&self.pool)
-            .await?;
-        rows.iter().map(|row| self.row_to_invoice(row)).collect()
-    }
-
-    pub async fn invoice_by_paypal_id(&self, paypal_invoice_id: &str) -> ApiResult<Option<Invoice>> {
+    pub async fn invoice_by_paypal_id(
+        &self,
+        paypal_invoice_id: &str,
+    ) -> ApiResult<Option<Invoice>> {
         let row = sqlx::query("SELECT * FROM invoices WHERE paypal_invoice_id = ?1")
             .bind(paypal_invoice_id)
             .fetch_optional(&self.pool)
@@ -266,9 +257,11 @@ impl Store {
     // ── mandate ──────────────────────────────────────────────────────
 
     pub async fn active_mandate(&self) -> ApiResult<CollectionMandate> {
-        let row = sqlx::query("SELECT payload_json FROM mandates WHERE is_active = 1 ORDER BY version DESC LIMIT 1")
-            .fetch_optional(&self.pool)
-            .await?;
+        let row = sqlx::query(
+            "SELECT payload_json FROM mandates WHERE is_active = 1 ORDER BY version DESC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
         match row {
             Some(row) => json(row.get::<String, _>("payload_json").as_str()),
             None => Ok(CollectionMandate::default()),
@@ -370,10 +363,11 @@ impl Store {
     }
 
     pub async fn actions_for_invoice(&self, invoice_id: InvoiceId) -> ApiResult<Vec<AgentAction>> {
-        let rows = sqlx::query("SELECT * FROM agent_actions WHERE invoice_id = ?1 ORDER BY created_at")
-            .bind(invoice_id.to_string())
-            .fetch_all(&self.pool)
-            .await?;
+        let rows =
+            sqlx::query("SELECT * FROM agent_actions WHERE invoice_id = ?1 ORDER BY created_at")
+                .bind(invoice_id.to_string())
+                .fetch_all(&self.pool)
+                .await?;
         rows.iter().map(|row| self.row_to_action(row)).collect()
     }
 
@@ -463,7 +457,9 @@ impl Store {
             .fetch_one(&self.pool)
             .await?;
         let raw: Option<String> = row.get("draft_message_id");
-        Ok(raw.and_then(|value| value.parse().ok()).map(MessageId::from_uuid))
+        Ok(raw
+            .and_then(|value| value.parse().ok())
+            .map(MessageId::from_uuid))
     }
 
     pub async fn set_message_source(&self, message_id: MessageId, source: &str) -> ApiResult<()> {
@@ -481,11 +477,12 @@ impl Store {
         channel: &str,
         counterparty: &str,
     ) -> ApiResult<ThreadId> {
-        let existing = sqlx::query("SELECT id FROM threads WHERE invoice_id = ?1 AND channel = ?2 LIMIT 1")
-            .bind(invoice_id.to_string())
-            .bind(channel)
-            .fetch_optional(&self.pool)
-            .await?;
+        let existing =
+            sqlx::query("SELECT id FROM threads WHERE invoice_id = ?1 AND channel = ?2 LIMIT 1")
+                .bind(invoice_id.to_string())
+                .bind(channel)
+                .fetch_optional(&self.pool)
+                .await?;
         if let Some(row) = existing {
             return Ok(ThreadId::from_uuid(
                 row.get::<String, _>("id")
@@ -510,15 +507,16 @@ impl Store {
     }
 
     pub async fn thread_for_invoice(&self, invoice_id: InvoiceId) -> ApiResult<Option<ThreadId>> {
-        let row = sqlx::query("SELECT id FROM threads WHERE invoice_id = ?1 ORDER BY created_at LIMIT 1")
-            .bind(invoice_id.to_string())
-            .fetch_optional(&self.pool)
-            .await?;
-        Ok(row.map(|row| {
-            ThreadId::from_uuid(row.get::<String, _>("id").parse().unwrap_or_default())
-        }))
+        let row =
+            sqlx::query("SELECT id FROM threads WHERE invoice_id = ?1 ORDER BY created_at LIMIT 1")
+                .bind(invoice_id.to_string())
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row
+            .map(|row| ThreadId::from_uuid(row.get::<String, _>("id").parse().unwrap_or_default())))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_message(
         &self,
         thread_id: ThreadId,
@@ -695,10 +693,12 @@ impl Store {
     }
 
     pub async fn payment_total_minor(&self, invoice_id: InvoiceId) -> ApiResult<i64> {
-        let row = sqlx::query("SELECT COALESCE(SUM(amount_minor), 0) AS total FROM payments WHERE invoice_id = ?1")
-            .bind(invoice_id.to_string())
-            .fetch_one(&self.pool)
-            .await?;
+        let row = sqlx::query(
+            "SELECT COALESCE(SUM(amount_minor), 0) AS total FROM payments WHERE invoice_id = ?1",
+        )
+        .bind(invoice_id.to_string())
+        .fetch_one(&self.pool)
+        .await?;
         Ok(row.get::<i64, _>("total"))
     }
 
@@ -782,22 +782,27 @@ impl Store {
         Ok(())
     }
 
-    pub async fn ledger(&self, limit: i64, invoice_id: Option<InvoiceId>) -> ApiResult<Vec<LedgerEvent>> {
-        let rows = match invoice_id {
-            Some(id) => {
-                sqlx::query("SELECT * FROM ledger_events WHERE invoice_id = ?1 ORDER BY at DESC LIMIT ?2")
-                    .bind(id.to_string())
-                    .bind(limit)
-                    .fetch_all(&self.pool)
-                    .await?
-            }
-            None => {
-                sqlx::query("SELECT * FROM ledger_events ORDER BY at DESC LIMIT ?1")
-                    .bind(limit)
-                    .fetch_all(&self.pool)
-                    .await?
-            }
-        };
+    pub async fn ledger(
+        &self,
+        limit: i64,
+        invoice_id: Option<InvoiceId>,
+    ) -> ApiResult<Vec<LedgerEvent>> {
+        let rows =
+            match invoice_id {
+                Some(id) => sqlx::query(
+                    "SELECT * FROM ledger_events WHERE invoice_id = ?1 ORDER BY at DESC LIMIT ?2",
+                )
+                .bind(id.to_string())
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await?,
+                None => {
+                    sqlx::query("SELECT * FROM ledger_events ORDER BY at DESC LIMIT ?1")
+                        .bind(limit)
+                        .fetch_all(&self.pool)
+                        .await?
+                }
+            };
         let mut out = Vec::new();
         for row in rows {
             let at = ts(row.get::<String, _>("at").as_str())?;
@@ -910,21 +915,6 @@ impl Store {
         Ok(())
     }
 
-    pub async fn plans(&self) -> ApiResult<Vec<PlanRow>> {
-        let rows = sqlx::query("SELECT * FROM plans ORDER BY created_at DESC").fetch_all(&self.pool).await?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(PlanRow {
-                id: row.get::<String, _>("id"),
-                invoice_id: row.get::<String, _>("invoice_id"),
-                status: row.get("status"),
-                terms: json(row.get::<String, _>("terms_json").as_str())?,
-                created_at: ts(row.get::<String, _>("created_at").as_str())?,
-            });
-        }
-        Ok(out)
-    }
-
     // ── a2a sessions ─────────────────────────────────────────────────
 
     pub async fn save_a2a_session(&self, session: &A2aSessionRow) -> ApiResult<()> {
@@ -968,11 +958,16 @@ impl Store {
         })
     }
 
-    pub async fn a2a_sessions_for_invoice(&self, invoice_id: InvoiceId) -> ApiResult<Vec<A2aSessionRow>> {
-        let rows = sqlx::query("SELECT * FROM a2a_sessions WHERE invoice_id = ?1 ORDER BY created_at DESC")
-            .bind(invoice_id.to_string())
-            .fetch_all(&self.pool)
-            .await?;
+    pub async fn a2a_sessions_for_invoice(
+        &self,
+        invoice_id: InvoiceId,
+    ) -> ApiResult<Vec<A2aSessionRow>> {
+        let rows = sqlx::query(
+            "SELECT * FROM a2a_sessions WHERE invoice_id = ?1 ORDER BY created_at DESC",
+        )
+        .bind(invoice_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
         let mut out = Vec::new();
         for row in rows {
             out.push(A2aSessionRow {
@@ -1067,15 +1062,6 @@ pub struct AttributionRow {
     pub rationale: String,
     pub days_to_paid: Option<i64>,
     pub days_saved: Option<i64>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct PlanRow {
-    pub id: String,
-    pub invoice_id: String,
-    pub status: String,
-    pub terms: Terms,
     pub created_at: DateTime<Utc>,
 }
 
@@ -1287,44 +1273,4 @@ pub fn confidence_key(confidence: kindly_core::attribution::Confidence) -> &'sta
     }
 }
 
-/// Rebuild a domain line from stored JSON (used by the seed and by tests).
-pub fn line_from_parts(
-    description: &str,
-    quantity_thousandths: i64,
-    unit_minor: i64,
-    currency: Currency,
-) -> ApiResult<InvoiceLine> {
-    Ok(InvoiceLine {
-        id: InvoiceLineId::new(),
-        description: description.to_string(),
-        quantity: Quantity::from_thousandths(quantity_thousandths)
-            .map_err(|e| ApiError::Domain(e))?,
-        unit_price: Money::new(unit_minor, currency),
-    })
-}
-
-impl Store {
-    pub async fn set_setting(&self, key: &str, value: &serde_json::Value) -> ApiResult<()> {
-        sqlx::query(
-            r#"INSERT INTO settings (key, value_json, updated_at) VALUES (?1, ?2, ?3)
-               ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at"#,
-        )
-        .bind(key)
-        .bind(value.to_string())
-        .bind(Utc::now().to_rfc3339())
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    pub async fn get_setting(&self, key: &str) -> ApiResult<Option<serde_json::Value>> {
-        let row = sqlx::query("SELECT value_json FROM settings WHERE key = ?1")
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await?;
-        Ok(row.and_then(|row| {
-            let raw: String = row.get("value_json");
-            serde_json::from_str(&raw).ok()
-        }))
-    }
-}
+impl Store {}

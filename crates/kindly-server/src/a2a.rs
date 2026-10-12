@@ -328,11 +328,7 @@ pub async fn start_session(
         "client_agent",
         &buyer.mandate.contact_name,
         &response,
-        &format!(
-            "{} — {}",
-            capitalise(decision.label()),
-            decision.reason()
-        ),
+        &format!("{} — {}", capitalise(decision.label()), decision.reason()),
     ));
 
     match &response.message {
@@ -457,13 +453,18 @@ async fn seller_answers_counter(
             // Hold the line: counter with terms the mandate accepts.
             let params = TermsParams {
                 upfront_bps: mandate.min_upfront_settlement_bps,
-                installments: mandate.max_installments.min(2).max(1),
+                installments: mandate.max_installments.clamp(1, 2),
                 discount_bps: 0,
                 days_between_installments: 7,
                 note: None,
             };
-            let counter = build_terms(invoice.outstanding(), &params, &mandate, Utc::now().date_naive())
-                .map_err(ApiError::Domain)?;
+            let counter = build_terms(
+                invoice.outstanding(),
+                &params,
+                &mandate,
+                Utc::now().date_naive(),
+            )
+            .map_err(ApiError::Domain)?;
             let envelope = seller_envelope(
                 state,
                 KatpMessage::Counter {
@@ -509,7 +510,8 @@ async fn seller_answers_counter(
                     .note(
                         Actor::KindlyAgent,
                         LedgerKind::AgentToAgentStep,
-                        "Negotiation reached the round limit without agreement — your move.".to_string(),
+                        "Negotiation reached the round limit without agreement — your move."
+                            .to_string(),
                         Some(invoice_id),
                     )
                     .await?;
@@ -731,13 +733,18 @@ pub async fn owner_decision(
         let mandate = state.store.active_mandate().await?;
         let params = TermsParams {
             upfront_bps: mandate.min_upfront_settlement_bps,
-            installments: mandate.max_installments.min(2).max(1),
+            installments: mandate.max_installments.clamp(1, 2),
             discount_bps: 0,
             days_between_installments: 7,
             note: None,
         };
-        let counter = build_terms(invoice.outstanding(), &params, &mandate, Utc::now().date_naive())
-            .map_err(ApiError::Domain)?;
+        let counter = build_terms(
+            invoice.outstanding(),
+            &params,
+            &mandate,
+            Utc::now().date_naive(),
+        )
+        .map_err(ApiError::Domain)?;
         let envelope = seller_envelope(
             state,
             KatpMessage::Counter {
@@ -779,11 +786,7 @@ pub async fn owner_decision(
             "client_agent",
             &buyer.mandate.contact_name,
             &response,
-            &format!(
-                "{} — {}",
-                capitalise(decision.label()),
-                decision.reason()
-            ),
+            &format!("{} — {}", capitalise(decision.label()), decision.reason()),
         ));
         match &decision {
             BuyerDecision::Accept { .. } => {

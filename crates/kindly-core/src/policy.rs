@@ -72,37 +72,15 @@ impl<'a> PolicyContext<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum ProposedAction {
-    SendNudge {
-        channel: Channel,
-        tone: Tone,
-    },
-    OfferTerms {
-        terms: Terms,
-        channel: Channel,
-    },
-    IssuePlan {
-        terms: Terms,
-    },
-    RecordPartialPayment {
-        amount: Money,
-    },
-    GrantDiscount {
-        amount: Money,
-        reason: String,
-    },
-    Escalate {
-        reason: String,
-    },
-    Pause {
-        days: u16,
-        reason: String,
-    },
-    StartAgentNegotiation {
-        terms: Terms,
-    },
-    CloseUncollectible {
-        reason: String,
-    },
+    SendNudge { channel: Channel, tone: Tone },
+    OfferTerms { terms: Terms, channel: Channel },
+    IssuePlan { terms: Terms },
+    RecordPartialPayment { amount: Money },
+    GrantDiscount { amount: Money, reason: String },
+    Escalate { reason: String },
+    Pause { days: u16, reason: String },
+    StartAgentNegotiation { terms: Terms },
+    CloseUncollectible { reason: String },
 }
 
 impl ProposedAction {
@@ -167,7 +145,10 @@ pub enum ApprovalReason {
     /// Autonomy is set to "suggest only".
     AutonomySuggestOnly,
     /// A discount above the pre-approved limit.
-    DiscountAboveAutoLimit { requested_bps: i32, auto_limit_bps: i32 },
+    DiscountAboveAutoLimit {
+        requested_bps: i32,
+        auto_limit_bps: i32,
+    },
     /// Terms that would take longer than the mandate allows.
     PlanAboveAutoLimit { days: i64, max_days: u16 },
     /// Escalation that needs the owner's blessing.
@@ -180,9 +161,13 @@ impl ApprovalReason {
     pub fn explain(&self) -> String {
         match self {
             ApprovalReason::AutonomySuggestOnly => {
-                "Your mandate is set to “suggest, I approve”, so nothing goes out without you.".into()
+                "Your mandate is set to “suggest, I approve”, so nothing goes out without you."
+                    .into()
             }
-            ApprovalReason::DiscountAboveAutoLimit { requested_bps, auto_limit_bps } => format!(
+            ApprovalReason::DiscountAboveAutoLimit {
+                requested_bps,
+                auto_limit_bps,
+            } => format!(
                 "This grants a {}% discount — above the {}% you pre-approved.",
                 fmt_bps(*requested_bps),
                 fmt_bps(*auto_limit_bps)
@@ -202,18 +187,46 @@ impl ApprovalReason {
 #[serde(tag = "reason", rename_all = "snake_case")]
 pub enum BlockReason {
     AutonomyObserve,
-    InvoiceNotOpen { status: String },
+    InvoiceNotOpen {
+        status: String,
+    },
     NothingOutstanding,
     AlreadySettled,
-    WeeklyContactCap { used: u8, cap: u8 },
-    TooSoon { days_since: i64, min_days: u8 },
-    QuietHours { window: String },
-    DiscountAboveCeiling { requested_bps: i32, ceiling_bps: i32 },
-    BelowSettlementFloor { upfront_bps: i32, floor_bps: i32 },
-    TooManyInstallments { requested: u8, max: u8 },
-    InstallmentTooSmall { amount: String, min: String },
-    PlanLongerThanAllowed { days: i64, max_days: u16 },
-    TermsDoNotCover { total: String, outstanding: String },
+    WeeklyContactCap {
+        used: u8,
+        cap: u8,
+    },
+    TooSoon {
+        days_since: i64,
+        min_days: u8,
+    },
+    QuietHours {
+        window: String,
+    },
+    DiscountAboveCeiling {
+        requested_bps: i32,
+        ceiling_bps: i32,
+    },
+    BelowSettlementFloor {
+        upfront_bps: i32,
+        floor_bps: i32,
+    },
+    TooManyInstallments {
+        requested: u8,
+        max: u8,
+    },
+    InstallmentTooSmall {
+        amount: String,
+        min: String,
+    },
+    PlanLongerThanAllowed {
+        days: i64,
+        max_days: u16,
+    },
+    TermsDoNotCover {
+        total: String,
+        outstanding: String,
+    },
     AgentToAgentDisabled,
     EscalationAlreadyOpen,
 }
@@ -298,7 +311,12 @@ pub fn evaluate(proposal: &ProposedAction, ctx: &PolicyContext<'_>) -> PolicyDec
         });
     }
     let outstanding = invoice.outstanding();
-    if outstanding.minor <= 0 && !matches!(proposal, ProposedAction::Pause { .. } | ProposedAction::CloseUncollectible { .. }) {
+    if outstanding.minor <= 0
+        && !matches!(
+            proposal,
+            ProposedAction::Pause { .. } | ProposedAction::CloseUncollectible { .. }
+        )
+    {
         return blocked(BlockReason::NothingOutstanding);
     }
 
@@ -455,7 +473,8 @@ pub fn judge_terms(
 
     if let Ok(total) = terms.total_value() {
         if total.minor > 0 {
-            let discount_bps = ((terms.discount.minor as i128 * 10_000) / total.minor as i128) as i32;
+            let discount_bps =
+                ((terms.discount.minor as i128 * 10_000) / total.minor as i128) as i32;
             if discount_bps > mandate.max_discount_bps {
                 return Some(blocked(BlockReason::DiscountAboveCeiling {
                     requested_bps: discount_bps,

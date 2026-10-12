@@ -57,8 +57,14 @@ pub fn router(state: SharedState) -> Router {
         .route("/api/ledger", get(ledger))
         .route("/api/events", get(stream_events))
         .route("/api/a2a/{session_id}/step", post(a2a_step))
-        .route("/api/a2a/{session_id}/owner-decision", post(a2a_owner_decision))
-        .route("/api/a2a/{session_id}/buyer-approval", post(a2a_buyer_approval))
+        .route(
+            "/api/a2a/{session_id}/owner-decision",
+            post(a2a_owner_decision),
+        )
+        .route(
+            "/api/a2a/{session_id}/buyer-approval",
+            post(a2a_buyer_approval),
+        )
         .route("/api/demo/scenario/{name}", post(demo_scenario))
         .route("/api/demo/reset", post(demo_reset))
         .route("/api/portal/{token}", get(portal_view))
@@ -288,8 +294,20 @@ async fn bootstrap(
             })
             .collect(),
         invoices: invoice_views,
-        approvals: { let mut out = Vec::new(); for action in &approvals { out.push(action_view(&state, action).await); } out },
-        actions: { let mut out = Vec::new(); for action in &actions { out.push(action_view(&state, action).await); } out },
+        approvals: {
+            let mut out = Vec::new();
+            for action in &approvals {
+                out.push(action_view(&state, action).await);
+            }
+            out
+        },
+        actions: {
+            let mut out = Vec::new();
+            for action in &actions {
+                out.push(action_view(&state, action).await);
+            }
+            out
+        },
         ledger: ledger
             .iter()
             .map(|event| {
@@ -309,28 +327,32 @@ async fn bootstrap(
             .collect(),
         attributions: attributions
             .iter()
-            .map(|a| json!({
-                "invoice_id": a.invoice_id,
-                "invoice_number": a.invoice_number,
-                "client_name": a.client_name,
-                "kind": a.kind,
-                "confidence": a.confidence,
-                "rationale": a.rationale,
-                "days_to_paid": a.days_to_paid,
-                "days_saved": a.days_saved,
-                "created_at": a.created_at,
-            }))
+            .map(|a| {
+                json!({
+                    "invoice_id": a.invoice_id,
+                    "invoice_number": a.invoice_number,
+                    "client_name": a.client_name,
+                    "kind": a.kind,
+                    "confidence": a.confidence,
+                    "rationale": a.rationale,
+                    "days_to_paid": a.days_to_paid,
+                    "days_saved": a.days_saved,
+                    "created_at": a.created_at,
+                })
+            })
             .collect(),
         paypal_events: paypal_events
             .iter()
-            .map(|e| json!({
-                "event_id": e.event_id,
-                "event_type": e.event_type,
-                "verified": e.verified,
-                "status": e.status,
-                "received_at": e.received_at,
-                "error": e.error,
-            }))
+            .map(|e| {
+                json!({
+                    "event_id": e.event_id,
+                    "event_type": e.event_type,
+                    "verified": e.verified,
+                    "status": e.status,
+                    "received_at": e.received_at,
+                    "error": e.error,
+                })
+            })
             .collect(),
         sessions: sessions_views,
         scenarios: demo::scenario_list(),
@@ -459,7 +481,13 @@ async fn create_invoice(
         .store
         .upsert_invoice(&invoice, request.work_summary.as_deref())
         .await?;
-    engine::push_invoice_to_paypal(&state, &mut invoice, &client, request.work_summary.as_deref()).await?;
+    engine::push_invoice_to_paypal(
+        &state,
+        &mut invoice,
+        &client,
+        request.work_summary.as_deref(),
+    )
+    .await?;
     engine::Ledger::new(&state.store, Some(&state.events))
         .note(
             kindly_core::ids::Actor::Owner,
@@ -475,7 +503,10 @@ async fn create_invoice(
         .await?;
 
     if request.send {
-        let subject = format!("Invoice {} from {}", invoice.number, state.config.owner_business);
+        let subject = format!(
+            "Invoice {} from {}",
+            invoice.number, state.config.owner_business
+        );
         engine::send_invoice_via_paypal(
             &state,
             &mut invoice,
@@ -485,7 +516,9 @@ async fn create_invoice(
         .await?;
     }
     let _ = InvoiceStatus::Draft;
-    Ok(Json(json!({ "invoice_id": invoice.id, "number": invoice.number })))
+    Ok(Json(
+        json!({ "invoice_id": invoice.id, "number": invoice.number }),
+    ))
 }
 
 async fn invoice_detail(
@@ -597,7 +630,10 @@ async fn send_invoice(
         let summary = state.store.invoice_work_summary(invoice.id).await?;
         engine::push_invoice_to_paypal(&state, &mut invoice, &client, summary.as_deref()).await?;
     }
-    let subject = format!("Invoice {} from {}", invoice.number, state.config.owner_business);
+    let subject = format!(
+        "Invoice {} from {}",
+        invoice.number, state.config.owner_business
+    );
     engine::send_invoice_via_paypal(
         &state,
         &mut invoice,
@@ -605,7 +641,9 @@ async fn send_invoice(
         "Thanks — here's the invoice for the work we finished.",
     )
     .await?;
-    Ok(Json(json!({ "invoice_id": invoice.id, "status": invoice.status })))
+    Ok(Json(
+        json!({ "invoice_id": invoice.id, "status": invoice.status }),
+    ))
 }
 
 async fn tick_invoice(
@@ -725,8 +763,7 @@ async fn put_mandate(
         mandate.max_discount_bps = value.clamp(0, 10_000);
     }
     if let Some(value) = update.max_discount_without_approval_bps {
-        mandate.max_discount_without_approval_bps =
-            value.clamp(0, mandate.max_discount_bps);
+        mandate.max_discount_without_approval_bps = value.clamp(0, mandate.max_discount_bps);
     }
     if let Some(value) = update.max_installments {
         mandate.max_installments = value.clamp(0, 12);
@@ -980,7 +1017,10 @@ async fn portal_order(
         .create_order(kindly_paypal::model::NewOrder {
             currency_code: invoice.currency.code().to_string(),
             amount_minor,
-            description: format!("Invoice {} — {}", invoice.number, state.config.owner_business),
+            description: format!(
+                "Invoice {} — {}",
+                invoice.number, state.config.owner_business
+            ),
             custom_id: format!("kindly:{invoice_id}", invoice_id = invoice.id),
         })
         .await?;
@@ -1001,7 +1041,6 @@ struct PortalPaymentRequest {
 #[derive(Deserialize)]
 struct PortalCapture {
     order_id: String,
-    amount_minor: Option<i64>,
 }
 
 async fn portal_capture(
@@ -1015,7 +1054,7 @@ async fn portal_capture(
         Some(sim) => {
             let (capture, events) = sim
                 .capture_order_sim(&request.order_id)
-                .map_err(|error| ApiError::PayPal(error))?;
+                .map_err(ApiError::PayPal)?;
             // Feed the simulated delivery through the real webhook pipeline.
             for event in events {
                 let body = serde_json::to_vec(&event)?;
@@ -1027,7 +1066,12 @@ async fn portal_capture(
                 let parsed = state.paypal.verify_webhook(&headers, &body).await?;
                 let is_new = state
                     .store
-                    .record_paypal_event(&parsed.event_id, &parsed.event_type, parsed.verified, &parsed.raw)
+                    .record_paypal_event(
+                        &parsed.event_id,
+                        &parsed.event_type,
+                        parsed.verified,
+                        &parsed.raw,
+                    )
                     .await?;
                 if is_new {
                     match sync::process_event(&state, &parsed).await {
@@ -1040,7 +1084,11 @@ async fn portal_capture(
                         Err(error) => {
                             state
                                 .store
-                                .mark_paypal_event(&parsed.event_id, "failed", Some(&error.to_string()))
+                                .mark_paypal_event(
+                                    &parsed.event_id,
+                                    "failed",
+                                    Some(&error.to_string()),
+                                )
                                 .await?;
                         }
                     }
@@ -1114,7 +1162,12 @@ async fn paypal_webhook(
 
     let is_new = state
         .store
-        .record_paypal_event(&event.event_id, &event.event_type, event.verified, &event.raw)
+        .record_paypal_event(
+            &event.event_id,
+            &event.event_type,
+            event.verified,
+            &event.raw,
+        )
         .await?;
     if !is_new {
         return Ok((
@@ -1286,8 +1339,8 @@ pub mod demo {
         let make_now = |hour: u32| {
             let today = Utc::now().date_naive();
             // Use a Monday so the weekday rule does not interfere with the hour demo.
-            let monday = today
-                - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
+            let monday =
+                today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
             monday
                 .and_hms_opt(hour, 0, 0)
                 .expect("valid time")
@@ -1389,7 +1442,8 @@ pub mod demo {
             .cloned()
             .ok_or_else(|| {
                 ApiError::Conflict(
-                    "no open instalment for this invoice — run the human_plan scenario first".into(),
+                    "no open instalment for this invoice — run the human_plan scenario first"
+                        .into(),
                 )
             })?;
         let Some(sim) = &state.sim else {
@@ -1414,7 +1468,12 @@ pub mod demo {
             let parsed = state.paypal.verify_webhook(&headers, &body).await?;
             let is_new = state
                 .store
-                .record_paypal_event(&parsed.event_id, &parsed.event_type, parsed.verified, &parsed.raw)
+                .record_paypal_event(
+                    &parsed.event_id,
+                    &parsed.event_type,
+                    parsed.verified,
+                    &parsed.raw,
+                )
                 .await?;
             if is_new {
                 sync::process_event(state, &parsed).await?;
@@ -1449,7 +1508,10 @@ async fn demo_scenario(
     Ok(Json(result))
 }
 
-async fn demo_reset(State(state): State<SharedState>, headers: HeaderMap) -> ApiResult<Json<Value>> {
+async fn demo_reset(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+) -> ApiResult<Json<Value>> {
     require_owner(&state, &headers)?;
     let summary = crate::seed::seed_demo(&state, true).await?;
     state.events.publish("demo_reset", json!({}));

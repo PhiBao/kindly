@@ -302,7 +302,9 @@ mod tests {
         let llm = NullLlm;
         assert!(!llm.is_enabled());
         assert!(llm.complete(LlmRequest::text("a", "b")).await.is_err());
-        assert!(complete_text(&llm, LlmRequest::text("a", "b")).await.is_none());
+        assert!(complete_text(&llm, LlmRequest::text("a", "b"))
+            .await
+            .is_none());
     }
 
     #[test]
@@ -316,7 +318,8 @@ mod tests {
         let fenced: Shape =
             parse_json_relaxed("Sure! ```json\n{\"greeting\": \"hello\"}\n```").unwrap();
         assert_eq!(fenced.greeting, "hello");
-        let prose: Shape = parse_json_relaxed("Here you go: {\"greeting\": \"hey\"} — enjoy").unwrap();
+        let prose: Shape =
+            parse_json_relaxed("Here you go: {\"greeting\": \"hey\"} — enjoy").unwrap();
         assert_eq!(prose.greeting, "hey");
         assert!(parse_json_relaxed::<Shape>("no json here").is_none());
     }

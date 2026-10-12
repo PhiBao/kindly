@@ -152,7 +152,11 @@ impl ContactWindow {
     }
 
     pub fn describe(&self) -> String {
-        let suffix = if self.weekdays_only { " on weekdays" } else { "" };
+        let suffix = if self.weekdays_only {
+            " on weekdays"
+        } else {
+            ""
+        };
         format!(
             "{:02}:00–{:02}:00 local{}",
             self.start_hour, self.end_hour, suffix
@@ -229,7 +233,13 @@ impl CollectionMandate {
             max_contacts_per_week: 2,
             min_days_between_contacts: 3,
             contact_window: ContactWindow::default(),
-            tone_ladder: vec![Tone::Warm, Tone::Warm, Tone::Neutral, Tone::Firm, Tone::Formal],
+            tone_ladder: vec![
+                Tone::Warm,
+                Tone::Warm,
+                Tone::Neutral,
+                Tone::Firm,
+                Tone::Formal,
+            ],
             min_upfront_settlement_bps: 7_000,
             max_discount_bps: 1_000,
             max_discount_without_approval_bps: 0,
@@ -255,7 +265,11 @@ impl CollectionMandate {
                 "{} — up to {} contact{} a week",
                 self.autonomy.label(),
                 self.max_contacts_per_week,
-                if self.max_contacts_per_week == 1 { "" } else { "s" }
+                if self.max_contacts_per_week == 1 {
+                    ""
+                } else {
+                    "s"
+                }
             ),
             format!(
                 "Never less than {}% up front",
@@ -266,7 +280,10 @@ impl CollectionMandate {
                 (self.max_discount_bps as f64 / 100.0).round(),
                 (self.max_discount_without_approval_bps as f64 / 100.0).round()
             ),
-            format!("Up to {} installments within {} days", self.max_installments, self.max_plan_days),
+            format!(
+                "Up to {} installments within {} days",
+                self.max_installments, self.max_plan_days
+            ),
             format!("Contact only {}", self.contact_window.describe()),
         ];
         if self.allow_agent_to_agent {
@@ -338,7 +355,10 @@ mod tests {
     fn default_mandate_is_conservative() {
         let m = CollectionMandate::default();
         assert_eq!(m.autonomy, AutonomyLevel::ActWithinLimits);
-        assert_eq!(m.max_discount_without_approval_bps, 0, "no discounts without asking");
+        assert_eq!(
+            m.max_discount_without_approval_bps, 0,
+            "no discounts without asking"
+        );
         assert!(m.min_upfront_settlement_bps >= 5_000);
         assert!(!m.digest().is_empty());
     }

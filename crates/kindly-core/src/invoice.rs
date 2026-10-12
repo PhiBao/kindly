@@ -48,12 +48,16 @@ impl Quantity {
         units
             .checked_mul(1000)
             .map(Quantity)
-            .ok_or(CoreError::Overflow { context: "quantity" })
+            .ok_or(CoreError::Overflow {
+                context: "quantity",
+            })
     }
 
     pub fn from_thousandths(value: i64) -> CoreResult<Self> {
         if value < 0 {
-            return Err(CoreError::InvalidQuantity(format!("negative quantity {value}")));
+            return Err(CoreError::InvalidQuantity(format!(
+                "negative quantity {value}"
+            )));
         }
         Ok(Quantity(value))
     }
@@ -99,7 +103,9 @@ impl InvoiceLine {
     pub fn amount(&self) -> CoreResult<Money> {
         let scaled = (self.quantity.thousandths() as i128) * (self.unit_price.minor as i128);
         let rounded = divide_round_half_away_from_zero(scaled, 1000);
-        let minor = i64::try_from(rounded).map_err(|_| CoreError::Overflow { context: "line amount" })?;
+        let minor = i64::try_from(rounded).map_err(|_| CoreError::Overflow {
+            context: "line amount",
+        })?;
         Ok(Money::new(minor, self.unit_price.currency))
     }
 }
@@ -139,10 +145,15 @@ impl Invoice {
         at: Timestamp,
     ) -> CoreResult<Self> {
         if lines.is_empty() {
-            return Err(CoreError::Validation("invoice needs at least one line".into()));
+            return Err(CoreError::Validation(
+                "invoice needs at least one line".into(),
+            ));
         }
         let total = Money::sum(
-            lines.iter().map(|l| l.amount()).collect::<CoreResult<Vec<_>>>()?,
+            lines
+                .iter()
+                .map(|l| l.amount())
+                .collect::<CoreResult<Vec<_>>>()?,
             currency,
         )?;
         Ok(Self {
@@ -207,7 +218,9 @@ impl Invoice {
             });
         }
         if amount.is_negative() {
-            return Err(CoreError::Validation("payment amount cannot be negative".into()));
+            return Err(CoreError::Validation(
+                "payment amount cannot be negative".into(),
+            ));
         }
         let outstanding = self.outstanding();
         let applied = if amount.minor > outstanding.minor {
@@ -215,10 +228,12 @@ impl Invoice {
         } else {
             amount
         };
-        self.amount_paid = self
-            .amount_paid
-            .checked_add(applied)
-            .map_err(|_| CoreError::Overflow { context: "apply_payment" })?;
+        self.amount_paid =
+            self.amount_paid
+                .checked_add(applied)
+                .map_err(|_| CoreError::Overflow {
+                    context: "apply_payment",
+                })?;
         if self.amount_paid.minor >= self.total.minor {
             self.status = InvoiceStatus::Paid;
             self.paid_at = Some(at);
@@ -246,7 +261,11 @@ fn divide_round_half_away_from_zero(numerator: i128, denominator: i128) -> i128 
     let magnitude = numerator.abs();
     let quotient = magnitude / denominator;
     let remainder = magnitude % denominator;
-    let rounded = if remainder * 2 >= denominator { quotient + 1 } else { quotient };
+    let rounded = if remainder * 2 >= denominator {
+        quotient + 1
+    } else {
+        quotient
+    };
     sign * rounded
 }
 

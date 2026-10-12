@@ -27,7 +27,11 @@ pub struct LiveConfig {
 }
 
 impl LiveConfig {
-    pub fn sandbox(client_id: impl Into<String>, client_secret: impl Into<String>, invoicer_email: impl Into<String>) -> Self {
+    pub fn sandbox(
+        client_id: impl Into<String>,
+        client_secret: impl Into<String>,
+        invoicer_email: impl Into<String>,
+    ) -> Self {
         Self {
             base_url: "https://api-m.sandbox.paypal.com".to_string(),
             client_id: client_id.into(),
@@ -211,7 +215,11 @@ impl LivePayPal {
                     .map(Duration::from_secs)
                     .unwrap_or(backoff)
                     .min(Duration::from_secs(5));
-                warn!(attempt, status = status.as_u16(), "paypal transient failure; retrying");
+                warn!(
+                    attempt,
+                    status = status.as_u16(),
+                    "paypal transient failure; retrying"
+                );
                 tokio::time::sleep(wait).await;
                 backoff *= 4;
                 continue;
@@ -235,12 +243,22 @@ impl PayPalApi for LivePayPal {
         let body = PayPalInvoice::build_create_body(&request);
         let request_id = format!("kindly-inv-{}", uuid::Uuid::now_v7());
         let (_, value, _) = self
-            .call(Method::POST, "/v2/invoicing/invoices", Some(&request_id), Some(&body))
+            .call(
+                Method::POST,
+                "/v2/invoicing/invoices",
+                Some(&request_id),
+                Some(&body),
+            )
             .await?;
         PayPalInvoice::from_resource(&value)
     }
 
-    async fn send_invoice(&self, paypal_invoice_id: &str, subject: &str, note: &str) -> PayPalResult<()> {
+    async fn send_invoice(
+        &self,
+        paypal_invoice_id: &str,
+        subject: &str,
+        note: &str,
+    ) -> PayPalResult<()> {
         let body = json!({
             "send_to_invoicer": false,
             "send_to_recipient": true,
@@ -257,7 +275,12 @@ impl PayPalApi for LivePayPal {
         .map(|_| ())
     }
 
-    async fn remind_invoice(&self, paypal_invoice_id: &str, subject: &str, note: &str) -> PayPalResult<()> {
+    async fn remind_invoice(
+        &self,
+        paypal_invoice_id: &str,
+        subject: &str,
+        note: &str,
+    ) -> PayPalResult<()> {
         let body = json!({
             "subject": subject,
             "note": note,
@@ -341,7 +364,10 @@ impl PayPalApi for LivePayPal {
         let (_, value, _) = self
             .call(
                 Method::GET,
-                &format!("/v2/invoicing/invoices?page=1&page_size={}&total_required=false", page_size.clamp(1, 100)),
+                &format!(
+                    "/v2/invoicing/invoices?page=1&page_size={}&total_required=false",
+                    page_size.clamp(1, 100)
+                ),
                 None,
                 None,
             )
@@ -371,7 +397,12 @@ impl PayPalApi for LivePayPal {
         });
         let request_id = format!("kindly-order-{}", uuid::Uuid::now_v7());
         let (_, value, _) = self
-            .call(Method::POST, "/v2/checkout/orders", Some(&request_id), Some(&body))
+            .call(
+                Method::POST,
+                "/v2/checkout/orders",
+                Some(&request_id),
+                Some(&body),
+            )
             .await?;
         let id = value
             .get("id")
@@ -383,7 +414,11 @@ impl PayPalApi for LivePayPal {
             .and_then(|v| v.as_str())
             .unwrap_or("CREATED")
             .to_string();
-        Ok(PayPalOrder { id, status, raw: value })
+        Ok(PayPalOrder {
+            id,
+            status,
+            raw: value,
+        })
     }
 
     async fn capture_order(&self, order_id: &str) -> PayPalResult<PayPalCapture> {
@@ -443,11 +478,9 @@ impl PayPalApi for LivePayPal {
         headers: &WebhookHeaders,
         raw_body: &[u8],
     ) -> PayPalResult<VerifiedEvent> {
-        let webhook_id = self
-            .config
-            .webhook_id
-            .as_ref()
-            .ok_or_else(|| PayPalError::Config("PAYPAL_WEBHOOK_ID is required to verify webhooks".into()))?;
+        let webhook_id = self.config.webhook_id.as_ref().ok_or_else(|| {
+            PayPalError::Config("PAYPAL_WEBHOOK_ID is required to verify webhooks".into())
+        })?;
 
         let event: Value = serde_json::from_slice(raw_body)
             .map_err(|e| PayPalError::Shape(format!("webhook body is not json: {e}")))?;
@@ -468,10 +501,9 @@ impl PayPalApi for LivePayPal {
             .auth_algo
             .clone()
             .ok_or_else(|| PayPalError::SignatureInvalid("missing auth algo".into()))?;
-        let transmission_sig = headers
-            .transmission_sig
-            .clone()
-            .ok_or_else(|| PayPalError::SignatureInvalid("missing transmission signature".into()))?;
+        let transmission_sig = headers.transmission_sig.clone().ok_or_else(|| {
+            PayPalError::SignatureInvalid("missing transmission signature".into())
+        })?;
 
         let body = json!({
             "transmission_id": transmission_id,
