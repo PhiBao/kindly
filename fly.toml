@@ -31,9 +31,11 @@ primary_region = "sin"
 [http_service]
   internal_port = 8787
   force_https = true
+  # One machine always on: a judge clicking the link must never meet a 502 from
+  # a cold start. (Idle cost is a couple of dollars a month.)
   auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [http_service.concurrency]
     type = "requests"

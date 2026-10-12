@@ -19,6 +19,7 @@ use crate::sync;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
+use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Datelike, Utc};
@@ -44,6 +45,10 @@ pub fn router(state: SharedState) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        // Anyone who lands on the API hostname should end up at the product,
+        // not a blank 404.
+        .route("/", get(root))
+        .route("/api", get(api_index))
         .route("/api/health", get(health))
         .route("/api/bootstrap", get(bootstrap))
         .route("/api/invoices", get(list_invoices).post(create_invoice))
@@ -104,6 +109,47 @@ fn require_owner(state: &SharedState, headers: &HeaderMap) -> ApiResult<()> {
 }
 
 // ─────────────────────────────── health & bootstrap ───────────────────────────────
+
+/// `GET /` — send a stray visitor to the web app (or explain itself if the
+/// public URL is not configured).
+async fn root(State(state): State<SharedState>) -> axum::response::Response {
+    use axum::response::Redirect;
+
+    let public = state.config.public_url.trim_end_matches('/');
+    if public.is_empty() || public == "http://localhost:8787" {
+        return Json(json!({
+            "name": "Kindly API",
+            "message": "This is Kindly's API host. The product itself runs on the web app.",
+            "api_index": "/api",
+            "health": "/api/health",
+        }))
+        .into_response();
+    }
+    Redirect::temporary(public).into_response()
+}
+
+/// `GET /api` — a short index, so the API is self-describing when probed.
+async fn api_index(State(state): State<SharedState>) -> ApiResult<Json<Value>> {
+    Ok(Json(json!({
+        "name": "Kindly API",
+        "description": "The collections agent for freelancers and small studios: it chases, negotiates and settles unpaid invoices over PayPal, inside limits the owner sets and can see enforced.",
+        "product": state.config.public_url,
+        "source": "https://github.com/PhiBao/kindly",
+        "mode": state.config.paypal_mode.label(),
+        "endpoints": {
+            "GET /api/health": "liveness, mode, and which layers are configured",
+            "GET /api/bootstrap": "everything the owner's desk needs in one call",
+            "GET /api/invoices/:id": "invoice, negotiation, letters, agent actions, audit trail",
+            "POST /api/invoices/:id/tick": "one agent pass over one invoice",
+            "POST /api/actions/:id/decision": "approve or decline a queued action",
+            "GET /api/events": "server-sent events (agent activity as it happens)",
+            "POST /api/a2a/:id/{step,owner-decision,buyer-approval}": "agent-to-agent negotiation",
+            "GET /api/portal/:token": "the client's view, behind a signed capability link",
+            "POST /api/webhooks/paypal": "verified, idempotent webhook intake",
+        },
+        "docs": "https://github.com/PhiBao/kindly#readme",
+    })))
+}
 
 async fn health(State(state): State<SharedState>) -> ApiResult<Json<Value>> {
     Ok(Json(json!({
