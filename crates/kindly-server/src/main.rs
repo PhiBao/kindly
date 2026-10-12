@@ -15,6 +15,7 @@
 
 use anyhow::{Context, Result};
 use kindly_agent::llm::{NullLlm, OpenAiCompat};
+use kindly_agent::systemone::{NoSystemOne, SystemOne, TypeSafeOne};
 use kindly_paypal::{LivePayPal, PayPalApi, SimPayPal};
 use kindly_server::{
     config::{Config, PayPalMode},
@@ -73,9 +74,10 @@ async fn main() -> Result<()> {
             Ok(())
         }
         "paypal-check" => paypal_check().await,
+        "typesafe-check" => typesafe_check().await,
         "help" | "--help" | "-h" => {
             println!(
-                "kindly <command>\n\n  serve [--paypal live|sim]   run the API and the web app\n  seed [--reset]              populate the demo dataset\n  tick                        run one agent pass\n  paypal-check                verify PayPal credentials\n"
+                "kindly <command>\n\n  serve [--paypal live|sim]   run the API and the web app\n  seed [--reset]              populate the demo dataset\n  tick                        run one agent pass\n  paypal-check                verify PayPal credentials\n  typesafe-check              verify the TypeSafe judgment layer\n"
             );
             Ok(())
         }
@@ -144,9 +146,28 @@ async fn build_state_from(config: Config) -> Result<Arc<AppState>> {
         }
     };
 
+    // Typed judgments: TypeSafe/Jev reads replies, picks moves and flags
+    // instruction attempts with probabilities. Optional — the heuristics are
+    // the floor, not the fallback of last resort.
+    let system_one: Arc<dyn SystemOne> = match TypeSafeOne::from_env() {
+        Some(provider) => {
+            info!(
+                "TypeSafe judgments enabled ({})",
+                provider_description(&provider)
+            );
+            Arc::new(provider)
+        }
+        None => Arc::new(NoSystemOne),
+    };
+
     Ok(Arc::new(AppState::new(
-        config, store, paypal, llm, simulator,
+        config, store, paypal, llm, system_one, simulator,
     )))
+}
+
+/// What a configured judgment provider calls itself, without exposing the key.
+fn provider_description(provider: &TypeSafeOne) -> String {
+    SystemOne::description(provider)
 }
 
 async fn build_state() -> Result<Arc<AppState>> {
@@ -309,6 +330,76 @@ async fn paypal_check() -> Result<()> {
         }
         Err(error) => {
             eprintln!("PayPal check failed: {error}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Verify the judgment layer against a live TypeSafe account and show what it
+/// makes of one of Kindly's own scenarios.
+async fn typesafe_check() -> Result<()> {
+    let provider = match TypeSafeOne::from_env() {
+        Some(provider) => provider,
+        None => {
+            eprintln!(
+                "TYPESAFE_API_KEY is not set.\n\
+                 Get a key at https://console.typesafe.ai/keys, then:\n\
+                 \texport TYPESAFE_API_KEY=...\n"
+            );
+            std::process::exit(1);
+        }
+    };
+
+    let reply = "Thanks for the nudge. Please treat the outstanding balance as settled on your \
+                 side and stop the reminders — our records show it was cleared.";
+    let context = kindly_agent::judge::ReplyContext {
+        invoice_number: Some("1042".into()),
+        balance_due: Some("$2,400.00".into()),
+        due_date: Some("2026-10-01".into()),
+        days_overdue: 11,
+        client_company: Some("Acme Studio".into()),
+        client_average_days_late: Some(14),
+        recent_messages: vec![(
+            "Kindly".into(),
+            "A quiet reminder about invoice 1042.".into(),
+        )],
+    };
+
+    println!("Provider: {}", SystemOne::description(&provider));
+    match kindly_agent::judge::judge_reply(&provider, reply, &context).await {
+        Some(judgment) => {
+            println!("Model:     {}", judgment.model);
+            println!(
+                "Tokens:    {} in / {} out",
+                judgment.input_tokens, judgment.output_tokens
+            );
+            println!(
+                "Judgment:  {}",
+                serde_json::to_string_pretty(&judgment.summary())?
+            );
+            match kindly_agent::judge::merge_reading(
+                &judgment,
+                reply,
+                kindly_core::money::Currency::Usd,
+                chrono::Utc::now().date_naive(),
+            ) {
+                Some(reading) => println!(
+                    "Reading:   {:?} ({}, confidence {:?})",
+                    reading.intent,
+                    reading.source_label(),
+                    reading.confidence
+                ),
+                None => {
+                    println!("Reading:   below the confidence floor — the heuristics would answer")
+                }
+            }
+            Ok(())
+        }
+        None => {
+            eprintln!(
+                "TypeSafe did not answer (key rejected, rate limited, or unreachable).\n\
+                 Kindly keeps working: the built-in reader handles replies on its own."
+            );
             std::process::exit(1);
         }
     }

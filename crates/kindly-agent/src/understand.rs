@@ -24,6 +24,17 @@ pub struct InjectionScan {
     pub matched: Vec<String>,
 }
 
+impl ReplyReading {
+    /// Plain-language name of the reader, for the ledger and the UI.
+    pub fn source_label(&self) -> &'static str {
+        match self.source {
+            ReadingSource::Model => "the model",
+            ReadingSource::SystemOne => "a TypeSafe judgment",
+            ReadingSource::Heuristic => "the built-in reader",
+        }
+    }
+}
+
 impl InjectionScan {
     pub fn clean() -> Self {
         Self {
@@ -84,18 +95,27 @@ pub fn scan_for_instructions(text: &str) -> InjectionScan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadingSource {
+    /// A prose language model classified the reply.
     Model,
+    /// A System One judgment (TypeSafe/Jev) classified the reply.
+    SystemOne,
+    /// The deterministic keyword classifier.
     Heuristic,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReplyReading {
     pub intent: ReplyIntent,
     pub injection: InjectionScan,
     pub source: ReadingSource,
+    /// How sure the reader was, when it can say (System One judgments and prose
+    /// models both report this). `None` for the heuristic path.
+    pub confidence: Option<f64>,
     /// Verbatim quote of the message used, so the owner can always see what
     /// was actually said.
     pub original: String,
+    /// A compact, ledger-safe record of the judgment that produced the reading.
+    pub judgment: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -146,7 +166,9 @@ pub async fn read_reply(
         intent,
         injection,
         source,
+        confidence: None,
         original: text.to_string(),
+        judgment: None,
     }
 }
 
@@ -410,6 +432,12 @@ fn excerpt(text: &str, max: usize) -> String {
 
 fn parse_date(value: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()
+}
+
+/// Pull a payment date out of a reply. Exposed so the judgment layer can keep
+/// Jev for labels and code for values.
+pub fn extract_date_candidate(text: &str, today: NaiveDate) -> Option<NaiveDate> {
+    extract_date(text, today)
 }
 
 fn extract_date(text: &str, today: NaiveDate) -> Option<NaiveDate> {

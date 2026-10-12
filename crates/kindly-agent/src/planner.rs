@@ -14,8 +14,10 @@
 //! The planner never executes anything itself.
 
 use crate::compose::{brief_line, compose_message, ComposeFacts, CompositionSource};
+use crate::judge;
 use crate::llm::{complete_json, LlmProvider, LlmRequest};
 use crate::prompts;
+use crate::systemone::SystemOne;
 use chrono::NaiveDate;
 use kindly_core::action::ActionKind;
 use kindly_core::client::RiskBand;
@@ -113,6 +115,7 @@ pub struct PlanOutcome {
 
 pub struct Planner {
     llm: Arc<dyn LlmProvider>,
+    system_one: Arc<dyn SystemOne>,
     owner_name: String,
 }
 
@@ -150,6 +153,31 @@ impl Move {
             Move::CloseUncollectible => "close_uncollectible",
         }
     }
+
+    /// How the move is described to a judgment model. Concrete, and honest
+    /// about what each move does.
+    fn describe(self) -> &'static str {
+        match self {
+            Move::Nudge => {
+                "Send one more polite reminder, in the owner's voice, with a payment link"
+            }
+            Move::OfferPlan => {
+                "Put concrete payment terms on the table (an up-front amount plus instalments), inside the owner's limits"
+            }
+            Move::Escalate => {
+                "Stop chasing and ask the owner to step in personally"
+            }
+            Move::Wait => {
+                "Do nothing for now: the situation is already moving, or contact would be counter-productive"
+            }
+            Move::AgentToAgent => {
+                "Open machine-to-machine talks with the client's accounts-payable agent, with signed terms"
+            }
+            Move::CloseUncollectible => {
+                "Propose closing the receivable as uncollectible and writing it off, for the owner to decide"
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -162,9 +190,14 @@ struct MoveChoice {
 }
 
 impl Planner {
-    pub fn new(llm: Arc<dyn LlmProvider>, owner_name: impl Into<String>) -> Self {
+    pub fn new(
+        llm: Arc<dyn LlmProvider>,
+        system_one: Arc<dyn SystemOne>,
+        owner_name: impl Into<String>,
+    ) -> Self {
         Self {
             llm,
+            system_one,
             owner_name: owner_name.into(),
         }
     }
@@ -399,7 +432,22 @@ impl Planner {
         mandate: &CollectionMandate,
         candidates: &[Move],
     ) -> Option<(Move, String)> {
-        if !self.llm.is_enabled() || candidates.len() <= 1 {
+        if candidates.len() <= 1 {
+            return None;
+        }
+
+        // System One first: choosing one of a closed set is exactly a Choice,
+        // and the answer comes with a confidence we can insist on.
+        if self.system_one.is_enabled() {
+            if let Some(chosen) = self
+                .choose_move_with_system_one(brief, mandate, candidates)
+                .await
+            {
+                return Some(chosen);
+            }
+        }
+
+        if !self.llm.is_enabled() {
             return None;
         }
         let options = candidates
@@ -445,6 +493,91 @@ Return strict JSON: {{"move": "<one of the list>", "reason": "<one sentence, fac
         .await?;
         let parsed = Move::parse(&choice.move_)?;
         Some((parsed, choice.reason))
+    }
+
+    /// Ask TypeSafe which move to make. The candidate descriptions carry the
+    /// situation; the answer carries a confidence; code keeps the verdict.
+    async fn choose_move_with_system_one(
+        &self,
+        brief: &InvoiceBrief,
+        mandate: &CollectionMandate,
+        candidates: &[Move],
+    ) -> Option<(Move, String)> {
+        let descriptions: Vec<(&str, &str)> = candidates
+            .iter()
+            .map(|candidate| (candidate.as_str(), candidate.describe()))
+            .collect();
+
+        let state = serde_json::json!({
+            "today": brief.today.to_string(),
+            "invoice": {
+                "number": brief.invoice_number,
+                "outstanding": brief.outstanding().display_with_symbol(),
+                "due_date": brief.due_date.to_string(),
+                "days_overdue": brief.days_overdue,
+                "stage": format!("{:?}", brief.stage),
+                "contacts_so_far": brief.contact_count,
+                "last_contact_at": brief.last_contact_at.map(|at| at.to_rfc3339()),
+                "promised_on": brief.promised_on.map(|day| day.to_string()),
+            },
+            "client": {
+                "company": brief.client_company,
+                "average_days_late": brief.client_avg_days_late,
+                "behaviour": format!("{:?}", brief.client_risk),
+                "has_accounts_payable_agent": brief.client_has_ap_agent,
+            },
+            "client_last_message_reading": brief
+                .pending_reply
+                .as_ref()
+                .map(|reply| format!("{reply:?}")),
+            "recent_correspondence": brief
+                .history
+                .iter()
+                .rev()
+                .take(4)
+                .rev()
+                .map(|(author, text)| serde_json::json!({ "from": author, "text": text }))
+                .collect::<Vec<_>>(),
+            "owner_limits": {
+                "max_contacts_per_week": mandate.max_contacts_per_week,
+                "min_days_between_contacts": mandate.min_days_between_contacts,
+                "min_upfront_settlement_percent": mandate.min_upfront_settlement_bps / 100,
+                "max_installments": mandate.max_installments,
+                "may_negotiate_agent_to_agent": mandate.allow_agent_to_agent,
+            },
+        });
+
+        let questions = judge::move_questions(&descriptions);
+        let judgment = match self.system_one.ask(state, questions).await {
+            Ok(judgment) => judgment,
+            Err(error) => {
+                tracing::warn!(%error, "system one move judgment failed; falling back");
+                return None;
+            }
+        };
+
+        let (label, confidence) = judgment.choice("move")?;
+        if confidence < judge::INTENT_CONFIDENCE_FLOOR {
+            return None;
+        }
+        let chosen = Move::parse(label)?;
+        if !candidates.contains(&chosen) {
+            return None;
+        }
+
+        let wait = judgment.noul("should_wait").unwrap_or(0.0);
+        let mut reason = format!(
+            "{} chose “{}” (confidence {:.2})",
+            self.system_one.description(),
+            chosen.as_str(),
+            confidence
+        );
+        if chosen == Move::Nudge && wait >= 0.6 {
+            reason.push_str(&format!(
+                "; it also flagged that another contact now risks the relationship ({wait:.2}), so this is the last cheap reminder"
+            ));
+        }
+        Some((chosen, reason))
     }
 
     async fn terms_params(&self, brief: &InvoiceBrief, mandate: &CollectionMandate) -> TermsParams {
@@ -630,7 +763,11 @@ mod tests {
 
     #[tokio::test]
     async fn first_move_on_an_overdue_invoice_is_a_nudge() {
-        let planner = Planner::new(Arc::new(NullLlm), "Maya Rodriguez");
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(crate::systemone::NoSystemOne),
+            "Maya Rodriguez",
+        );
         let mut b = brief();
         b.client_has_ap_agent = false;
         let outcome = planner.plan(&b, &mandate()).await;
@@ -646,7 +783,11 @@ mod tests {
 
     #[tokio::test]
     async fn a_client_with_an_ap_agent_is_negotiated_with_first() {
-        let planner = Planner::new(Arc::new(NullLlm), "Maya Rodriguez");
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(crate::systemone::NoSystemOne),
+            "Maya Rodriguez",
+        );
         let outcome = planner.plan(&brief(), &mandate()).await;
         assert!(matches!(
             outcome.actions[0],
@@ -656,7 +797,11 @@ mod tests {
 
     #[tokio::test]
     async fn a_plan_request_produces_terms_that_cover_the_balance() {
-        let planner = Planner::new(Arc::new(NullLlm), "Maya Rodriguez");
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(crate::systemone::NoSystemOne),
+            "Maya Rodriguez",
+        );
         let mut b = brief();
         b.stage = Stage::Negotiating;
         b.contact_count = 1;
@@ -683,7 +828,11 @@ mod tests {
 
     #[tokio::test]
     async fn long_silence_escalates_then_proposes_closure() {
-        let planner = Planner::new(Arc::new(NullLlm), "Maya");
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(crate::systemone::NoSystemOne),
+            "Maya",
+        );
         let mut b = brief();
         b.client_has_ap_agent = false;
         b.contact_count = 5; // beyond the escalation threshold
@@ -708,7 +857,11 @@ mod tests {
 
     #[tokio::test]
     async fn observe_only_still_plans_but_policy_will_block() {
-        let planner = Planner::new(Arc::new(NullLlm), "Maya");
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(crate::systemone::NoSystemOne),
+            "Maya",
+        );
         let mut m = mandate();
         m.autonomy = AutonomyLevel::Observe;
         let outcome = planner.plan(&brief(), &m).await;
@@ -718,12 +871,134 @@ mod tests {
 
     #[tokio::test]
     async fn settled_invoices_produce_no_actions() {
-        let planner = Planner::new(Arc::new(NullLlm), "Maya");
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(crate::systemone::NoSystemOne),
+            "Maya",
+        );
         let mut b = brief();
         b.outstanding_minor = 0;
         let outcome = planner.plan(&b, &mandate()).await;
         assert!(outcome.actions.is_empty());
         assert!(outcome.idle_reason.is_some());
+    }
+
+    /// A judgment provider that always answers, so the choice path is exercised
+    /// without a network call.
+    struct ScriptedOne {
+        move_label: &'static str,
+        confidence: f64,
+        should_wait: f64,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::systemone::SystemOne for ScriptedOne {
+        async fn ask(
+            &self,
+            _state: serde_json::Value,
+            _questions: std::collections::BTreeMap<String, crate::systemone::Question>,
+        ) -> Result<crate::systemone::Judgment, crate::systemone::SystemOneError> {
+            let mut answers = std::collections::BTreeMap::new();
+            answers.insert(
+                "move".to_string(),
+                crate::systemone::Answer::Choice {
+                    choice: self.move_label.to_string(),
+                    probabilities: std::collections::BTreeMap::from([(
+                        self.move_label.to_string(),
+                        self.confidence,
+                    )]),
+                    confidence: self.confidence,
+                },
+            );
+            answers.insert(
+                "should_wait".to_string(),
+                crate::systemone::Answer::Noul {
+                    noul: self.should_wait,
+                },
+            );
+            Ok(crate::systemone::Judgment {
+                answers,
+                model: "jev-test".into(),
+                input_tokens: 120,
+                output_tokens: 12,
+            })
+        }
+
+        fn description(&self) -> String {
+            "scripted judgment".into()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_system_one_judgment_chooses_the_move() {
+        // The deterministic default for this brief would be agent-to-agent
+        // (Acme has an AP agent); the judgment says to send a reminder instead,
+        // and code follows it because the candidate list allows it.
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(ScriptedOne {
+                move_label: "nudge",
+                confidence: 0.77,
+                should_wait: 0.0,
+            }),
+            "Maya Rodriguez",
+        );
+        let outcome = planner.plan(&brief(), &mandate()).await;
+        assert!(matches!(
+            outcome.actions[0],
+            kindly_core::policy::ProposedAction::SendNudge { .. }
+        ));
+        assert!(
+            outcome
+                .narrative
+                .iter()
+                .any(|line| line.contains("scripted judgment")),
+            "the ledger explains who chose: {:?}",
+            outcome.narrative
+        );
+    }
+
+    #[tokio::test]
+    async fn a_low_confidence_judgment_falls_back_to_the_default() {
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(ScriptedOne {
+                move_label: "wait",
+                confidence: 0.21,
+                should_wait: 0.9,
+            }),
+            "Maya Rodriguez",
+        );
+        let outcome = planner.plan(&brief(), &mandate()).await;
+        assert!(
+            matches!(
+                outcome.actions[0],
+                kindly_core::policy::ProposedAction::StartAgentNegotiation { .. }
+            ),
+            "the deterministic default stands"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_judgment_outside_the_candidate_set_is_ignored() {
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(ScriptedOne {
+                move_label: "close_uncollectible",
+                confidence: 0.99,
+                should_wait: 0.0,
+            }),
+            "Maya Rodriguez",
+        );
+        // The brief is only 11 days overdue, so closure is not a candidate.
+        let outcome = planner.plan(&brief(), &mandate()).await;
+        assert!(
+            matches!(
+                outcome.actions[0],
+                kindly_core::policy::ProposedAction::StartAgentNegotiation { .. }
+            ),
+            "an out-of-set choice cannot be acted on"
+        );
     }
 
     #[test]

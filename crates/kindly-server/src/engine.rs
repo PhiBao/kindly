@@ -8,11 +8,11 @@
 use crate::errors::{ApiError, ApiResult};
 use crate::events::EventBus;
 use crate::state::AppState;
-use crate::store::Store;
+use crate::store::{Message, Store};
 use chrono::Utc;
 use kindly_agent::compose::{compose_message, ComposeFacts};
+use kindly_agent::judge::{self, ReplyContext};
 use kindly_agent::planner::{DraftMessage, InvoiceBrief};
-use kindly_agent::understand::read_reply;
 use kindly_core::action::{ActionKind, ActionStatus, AgentAction};
 use kindly_core::attribution;
 use kindly_core::client::Client;
@@ -1339,11 +1339,37 @@ pub async fn handle_client_message(
         .ensure_thread(invoice_id, "portal", client.display_name())
         .await?;
 
-    let reading = read_reply(
+    // What the client wrote is data. Two independent readers look at it: the
+    // deterministic scanner inside `read_reply`, and a System One judgment with
+    // an explicit probability that the message addresses the system.
+    let today = Utc::now().date_naive();
+    let context = ReplyContext {
+        invoice_number: Some(invoice.number.clone()),
+        balance_due: Some(invoice.outstanding().display_with_symbol()),
+        due_date: Some(invoice.due_date.to_string()),
+        days_overdue: invoice.days_overdue(today),
+        client_company: Some(client.display_name().to_string()),
+        client_average_days_late: Some(client.behavior.avg_days_late),
+        recent_messages: {
+            let messages = state.store.messages(thread_id).await?;
+            let recent: Vec<Message> = messages
+                .into_iter()
+                .filter(|message| message.source.as_deref() == Some("sent"))
+                .collect();
+            recent
+                .iter()
+                .skip(recent.len().saturating_sub(5))
+                .map(|message| (message.author_label.clone(), message.body.clone()))
+                .collect()
+        },
+    };
+    let reading = judge::read_reply_with_judgment(
+        state.system_one.as_ref(),
         state.llm.as_ref(),
         body,
         invoice.currency,
-        Utc::now().date_naive(),
+        today,
+        &context,
     )
     .await;
 
@@ -1366,10 +1392,17 @@ pub async fn handle_client_message(
             Actor::Client,
             LedgerKind::MessageReceived,
             format!(
-                "{} wrote: “{}” (read as {})",
+                "{} wrote: “{}” (read as {}{})",
                 client.display_name(),
                 truncate(body, 120),
-                intent_label(&reading.intent)
+                intent_label(&reading.intent),
+                reading
+                    .confidence
+                    .map(|confidence| format!(
+                        ", confidence {confidence:.2} by {}",
+                        reading.source_label()
+                    ))
+                    .unwrap_or_else(|| format!(" by {}", reading.source_label()))
             ),
             Some(invoice_id),
         )
@@ -1390,7 +1423,8 @@ pub async fn handle_client_message(
                 .with_invoice(invoice_id)
                 .with_detail(json!({
                     "patterns": reading.injection.matched,
-                    "reading_source": format!("{:?}", reading.source),
+                    "reading_source": reading.source_label(),
+                    "judgment": reading.judgment,
                 })),
             )
             .await?;

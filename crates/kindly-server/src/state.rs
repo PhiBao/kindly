@@ -8,6 +8,7 @@ use ed25519_dalek::SigningKey;
 use kindly_agent::buyer::BuyerAgent;
 use kindly_agent::llm::LlmProvider;
 use kindly_agent::planner::Planner;
+use kindly_agent::systemone::SystemOne;
 use kindly_paypal::{PayPalApi, SimPayPal};
 use rand_core::OsRng;
 use std::collections::HashMap;
@@ -21,6 +22,8 @@ pub struct AppState {
     /// Present only in simulation mode: lets the demo drive payments.
     pub sim: Option<Arc<SimPayPal>>,
     pub llm: Arc<dyn LlmProvider>,
+    /// Typed judgments (TypeSafe / Jev). Falls back to heuristics when absent.
+    pub system_one: Arc<dyn SystemOne>,
     pub planner: Arc<Planner>,
     pub events: EventBus,
     /// Live agent-to-agent sessions. Buyer agents hold ephemeral signing keys;
@@ -38,15 +41,21 @@ impl AppState {
         store: Store,
         paypal: Arc<dyn PayPalApi>,
         llm: Arc<dyn LlmProvider>,
+        system_one: Arc<dyn SystemOne>,
         sim: Option<Arc<SimPayPal>>,
     ) -> Self {
-        let planner = Arc::new(Planner::new(llm.clone(), config.owner_name.clone()));
+        let planner = Arc::new(Planner::new(
+            llm.clone(),
+            system_one.clone(),
+            config.owner_name.clone(),
+        ));
         Self {
             config,
             store,
             paypal,
             sim,
             llm,
+            system_one,
             planner,
             events: EventBus::new(),
             buyer_sessions: Arc::new(Mutex::new(HashMap::new())),

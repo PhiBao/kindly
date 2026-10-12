@@ -12,6 +12,7 @@
 //! * replayed webhook deliveries are ignored.
 
 use kindly_agent::llm::NullLlm;
+use kindly_agent::systemone::NoSystemOne;
 use kindly_core::ids::Actor;
 use kindly_core::ledger::LedgerKind;
 use kindly_paypal::SimPayPal;
@@ -33,6 +34,7 @@ async fn test_state() -> Arc<AppState> {
         store,
         simulator.clone(),
         Arc::new(NullLlm),
+        Arc::new(NoSystemOne),
         Some(simulator),
     ));
     seed::seed_demo(&state, false).await.expect("seed");

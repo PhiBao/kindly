@@ -112,6 +112,8 @@ async fn health(State(state): State<SharedState>) -> ApiResult<Json<Value>> {
         "paypal_configured": state.config.paypal_configured(),
         "language_model": state.llm.description(),
         "model_enabled": state.llm.is_enabled(),
+        "judgment_layer": state.system_one.description(),
+        "judgment_enabled": state.system_one.is_enabled(),
         "scheduler": state.config.scheduler_enabled,
         "started_at": state.started_at,
         "clients": state.store.count_rows("clients").await?,
@@ -255,6 +257,8 @@ async fn bootstrap(
         environment: json!({
             "model": state.llm.description(),
             "model_enabled": state.llm.is_enabled(),
+            "judgment": state.system_one.description(),
+            "judgment_enabled": state.system_one.is_enabled(),
             "paypal_base_url": state.config.paypal_base_url,
             "public_url": state.config.public_url,
         }),
