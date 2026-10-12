@@ -76,6 +76,9 @@ export function DeskShell({
 
         <div className="flex flex-wrap items-center gap-2.5">
           {actions}
+          <Link className="btn" href="/analytics">
+            The money view
+          </Link>
           <button className="btn" onClick={runAgent} disabled={busy !== null}>
             {busy === "tick" ? "Working…" : "Run the agent"}
           </button>

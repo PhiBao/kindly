@@ -89,6 +89,9 @@ export default function InvoiceDeskPage() {
           <button className="btn btn--sm" onClick={() => void act("remind", () => api.remind(id))} disabled={busy !== null}>
             PayPal reminder
           </button>
+          <Link className="btn btn--sm" href="/analytics">
+            Money view
+          </Link>
         </div>
       </header>
 
