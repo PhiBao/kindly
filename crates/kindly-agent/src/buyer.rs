@@ -244,7 +244,10 @@ impl BuyerAgent {
         currency: &str,
     ) -> TermsProposal {
         let pay_now = self.mandate.max_unapproved_cash_minor.min(balance_minor);
-        let remainder = (balance_minor - pay_now).max(0);
+        // The discount we ask for has to come out of what we pay, not on top.
+        let discount_minor = (balance_minor as i128 * self.mandate.discount_ask_bps as i128 / 10_000)
+            as i64;
+        let remainder = (balance_minor - pay_now - discount_minor).max(0);
         let target_installments = self
             .mandate
             .max_installments
@@ -268,9 +271,6 @@ impl BuyerAgent {
                 });
             }
         }
-
-        let discount_minor = (balance_minor as i128 * self.mandate.discount_ask_bps as i128
-            / 10_000) as i64;
 
         TermsProposal {
             pay_now_minor: incoming.pay_now_minor.min(pay_now),

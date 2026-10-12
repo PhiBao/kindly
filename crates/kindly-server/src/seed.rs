@@ -141,7 +141,7 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
 
     // ── invoices ─────────────────────────────────────────────────────
     // 1. Acme — the agent-to-agent story.
-    let acme_invoice = make_invoice(
+    let (acme_invoice, acme_invoice_work) = make_invoice(
         &acme,
         "1042",
         240_000,
@@ -155,7 +155,7 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         now,
     )?;
     // 2. Northwind — the human conversation story.
-    let northwind_invoice = make_invoice(
+    let (northwind_invoice, northwind_invoice_work) = make_invoice(
         &northwind,
         "1039",
         115_000,
@@ -165,7 +165,7 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         now,
     )?;
     // 3. Brightline — the escalation story.
-    let brightline_invoice = make_invoice(
+    let (brightline_invoice, brightline_invoice_work) = make_invoice(
         &brightline,
         "1027",
         480_000,
@@ -175,7 +175,7 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         now,
     )?;
     // 4. Kestrel — an invoice that is not late yet.
-    let kestrel_invoice = make_invoice(
+    let (kestrel_invoice, kestrel_invoice_work) = make_invoice(
         &kestrel,
         "1051",
         90_000,
@@ -185,14 +185,14 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         now,
     )?;
 
-    for (invoice, client) in [
-        (&acme_invoice, &acme),
-        (&northwind_invoice, &northwind),
-        (&brightline_invoice, &brightline),
-        (&kestrel_invoice, &kestrel),
+    for (invoice, work, client) in [
+        (&acme_invoice, &acme_invoice_work, &acme),
+        (&northwind_invoice, &northwind_invoice_work, &northwind),
+        (&brightline_invoice, &brightline_invoice_work, &brightline),
+        (&kestrel_invoice, &kestrel_invoice_work, &kestrel),
     ] {
         let mut invoice = invoice.clone();
-        engine::push_invoice_to_paypal(state, &mut invoice, client, None).await?;
+        engine::push_invoice_to_paypal(state, &mut invoice, client, work.as_deref()).await?;
         let subject = format!("Invoice {} from {}", invoice.number, state.config.owner_business);
         engine::send_invoice_via_paypal(
             state,
@@ -254,7 +254,7 @@ fn make_invoice(
     lines: Vec<(&str, i64, i64)>,
     work_summary: Option<&str>,
     now: chrono::DateTime<Utc>,
-) -> ApiResult<Invoice> {
+) -> ApiResult<(Invoice, Option<String>)> {
     let invoice_lines = lines
         .into_iter()
         .map(|(description, quantity_thousandths, unit_minor)| {
@@ -268,8 +268,7 @@ fn make_invoice(
     let mut invoice = Invoice::new(client.id, number, Currency::Usd, due, invoice_lines, now)?;
     invoice.total = Money::new(total_minor, Currency::Usd);
     invoice.memo = work_summary.map(str::to_string);
-    let _ = work_summary;
-    Ok(invoice)
+    Ok((invoice, work_summary.map(str::to_string)))
 }
 
 /// Create believable past contact: executed nudges, delivered messages, and
@@ -296,24 +295,52 @@ async fn seed_contact_history(
     for index in 0..contacts {
         let at = Utc::now() - Duration::days(days_ago - (index as i64 * 7));
         let tone = Tone::for_contact(index + 1, &mandate.tone_ladder);
-        let body = format!(
-            "Hi {},\n\nJust a note that invoice {} ({}) was due on {}. You can settle it from the link in this thread.\n\n— {}",
-            client.name.split_whitespace().next().unwrap_or(&client.name),
-            invoice.number,
-            invoice.outstanding().display_with_symbol(),
-            invoice.due_date.format("%-d %B"),
-            state.config.owner_name
-        );
+        let first_name = client.name.split_whitespace().next().unwrap_or(&client.name);
+        let (subject, body) = match index {
+            0 => (
+                format!("Invoice {} — quick check-in", invoice.number),
+                format!(
+                    "Hi {first_name},\n\nJust a quiet note that invoice {} for {} was due on {}. If it's already queued in your payment run, thank you — ignore me. The payment link is in this thread.\n\n— {}",
+                    invoice.number,
+                    invoice.outstanding().display_with_symbol(),
+                    invoice.due_date.format("%-d %B"),
+                    state.config.owner_name
+                ),
+            ),
+            1 => (
+                format!("Following up: invoice {}", invoice.number),
+                format!(
+                    "Hi {first_name},\n\nFollowing up on invoice {} ({}) — still open on my side. You can settle it from the link here. If something is holding it up, tell me and we'll sort it out.\n\n— {}",
+                    invoice.number,
+                    invoice.outstanding().display_with_symbol(),
+                    state.config.owner_name
+                ),
+            ),
+            _ => (
+                format!(
+                    "Invoice {} — {} days past due",
+                    invoice.number,
+                    invoice.days_overdue(Utc::now().date_naive())
+                ),
+                format!(
+                    "Hi {first_name},\n\nInvoice {} ({}) is now past 30 days. I'd rather sort this between us than escalate it — could you confirm a payment date, or tell me what's blocking it?\n\n— {}",
+                    invoice.number,
+                    invoice.outstanding().display_with_symbol(),
+                    state.config.owner_name
+                ),
+            ),
+        };
         state
             .store
-            .add_message(
+            .add_message_at(
                 thread_id,
                 Actor::KindlyAgent,
                 "Kindly",
-                Some(&format!("Invoice {} — quick check-in", invoice.number)),
+                Some(&subject),
                 &body,
                 None,
                 Some("sent"),
+                at,
             )
             .await?;
 
@@ -379,7 +406,7 @@ async fn seed_contact_history(
         };
         state
             .store
-            .add_message(
+            .add_message_at(
                 thread_id,
                 Actor::Client,
                 client.display_name(),
@@ -387,6 +414,7 @@ async fn seed_contact_history(
                 text,
                 Some(&serde_json::to_string(&intent)?),
                 Some("sent"),
+                at,
             )
             .await?;
 

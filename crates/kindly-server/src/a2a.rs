@@ -516,6 +516,10 @@ async fn seller_answers_counter(
                 return Ok(());
             }
 
+            // If their agent is repeating the same position, it has no more
+            // room: the decision belongs to their human, not to another round.
+            let previous_buyer_terms = last_terms_in(&session.transcript, false);
+
             let (response, buyer_decision) = buyer
                 .respond(
                     &envelope.message,
@@ -533,6 +537,31 @@ async fn seller_answers_counter(
                     buyer_decision.reason()
                 ),
             ));
+
+            // Their agent repeated the identical counter: it has said all it
+            // can say, so ask their finance lead instead of looping.
+            if let (Some(previous), KatpMessage::Counter { terms, .. }) =
+                (previous_buyer_terms.as_ref(), &response.message)
+            {
+                let repeated = previous.pay_now_minor == terms.pay_now_minor
+                    && previous.discount_minor == terms.discount_minor
+                    && previous.installments.len() == terms.installments.len();
+                if repeated {
+                    session.status = status::AWAITING_BUYER.to_string();
+                    ledger
+                        .note(
+                            Actor::ClientAgent,
+                            LedgerKind::AgentToAgentStep,
+                            format!(
+                                "{}'s agent is repeating the same position — their finance lead has to decide now.",
+                                buyer.mandate.company
+                            ),
+                            Some(invoice_id),
+                        )
+                        .await?;
+                    return Ok(());
+                }
+            }
             match &buyer_decision {
                 BuyerDecision::Accept { .. } => {
                     if let KatpMessage::Accept { terms, .. } = &response.message {

@@ -288,8 +288,8 @@ async fn bootstrap(
             })
             .collect(),
         invoices: invoice_views,
-        approvals: approvals.iter().map(action_view).collect(),
-        actions: actions.iter().map(action_view).collect(),
+        approvals: { let mut out = Vec::new(); for action in &approvals { out.push(action_view(&state, action).await); } out },
+        actions: { let mut out = Vec::new(); for action in &actions { out.push(action_view(&state, action).await); } out },
         ledger: ledger
             .iter()
             .map(|event| {
@@ -337,8 +337,23 @@ async fn bootstrap(
     }))
 }
 
-fn action_view(action: &kindly_core::action::AgentAction) -> Value {
+async fn action_view(state: &SharedState, action: &kindly_core::action::AgentAction) -> Value {
+    // The exact words the owner is being asked to approve — read straight from
+    // the persisted draft, so nothing is paraphrased.
+    let draft = match state.store.action_draft_message(action.id).await {
+        Ok(Some(message_id)) => state
+            .store
+            .message(message_id)
+            .await
+            .ok()
+            .flatten()
+            .filter(|message| message.source.as_deref() != Some("sent"))
+            .map(|message| json!({ "subject": message.subject, "body": message.body })),
+        _ => None,
+    };
+
     json!({
+        "draft": draft,
         "id": action.id,
         "invoice_id": action.invoice_id,
         "kind": action.kind,
@@ -500,6 +515,10 @@ async fn invoice_detail(
         crate::portal::PORTAL_TOKEN_TTL_DAYS,
     );
     let today = Utc::now().date_naive();
+    let mut action_views = Vec::new();
+    for action in &actions {
+        action_views.push(action_view(&state, action).await);
+    }
 
     Ok(Json(json!({
         "invoice": {
@@ -510,6 +529,8 @@ async fn invoice_detail(
             "total": invoice.total.display_with_symbol(),
             "outstanding": invoice.outstanding().display_with_symbol(),
             "due_date": invoice.due_date,
+            "issued_at": invoice.issued_at,
+            "paid_at": invoice.paid_at,
             "days_overdue": invoice.days_overdue(today),
             "paypal_invoice_id": invoice.paypal_invoice_id,
             "paypal_status": invoice.paypal_status,
@@ -532,7 +553,7 @@ async fn invoice_detail(
             "risk_label": client.behavior.risk_band().label(),
         },
         "negotiation": negotiation,
-        "actions": actions.iter().map(action_view).collect::<Vec<_>>(),
+        "actions": action_views,
         "ledger": ledger.iter().map(|event| json!({
             "at": event.at,
             "actor_label": event.actor.label(),
@@ -641,7 +662,7 @@ async fn decide_action(
         .map_err(|_| ApiError::BadRequest("action id is not valid".into()))?;
     engine::approve_action(&state, action_id, request.approve).await?;
     let action = state.store.action(action_id).await?;
-    Ok(Json(action_view(&action)))
+    Ok(Json(action_view(&state, &action).await))
 }
 
 async fn get_mandate(
@@ -1215,9 +1236,13 @@ pub mod demo {
         let invoice = invoice_by_number(state, "1039").await?;
         let report = engine::tick_invoice(state, invoice.id).await?;
         let actions = state.store.actions_for_invoice(invoice.id).await?;
+        let mut latest = Vec::new();
+        for action in actions.iter().rev().take(1) {
+            latest.push(action_view(state, action).await);
+        }
         Ok(json!({
             "tick": report,
-            "latest_action": actions.last().map(action_view),
+            "latest_action": latest.first(),
         }))
     }
 
@@ -1295,10 +1320,16 @@ pub mod demo {
         let invoice = invoice_by_number(state, "1027").await?;
         let report = engine::tick_invoice(state, invoice.id).await?;
         let actions = state.store.actions_for_invoice(invoice.id).await?;
+        let mut approvals = Vec::new();
+        for action in actions
+            .iter()
+            .filter(|a| a.status == kindly_core::action::ActionStatus::AwaitingApproval)
+        {
+            approvals.push(action_view(state, action).await);
+        }
         Ok(json!({
             "tick": report,
-            "approvals": actions.iter().filter(|a| a.status == kindly_core::action::ActionStatus::AwaitingApproval)
-                .map(action_view).collect::<Vec<_>>(),
+            "approvals": approvals,
         }))
     }
 

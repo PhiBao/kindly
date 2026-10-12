@@ -678,6 +678,7 @@ async fn send_nudge(state: &AppState, action: &AgentAction, channel: Channel) ->
 
     let body = body.unwrap_or_default();
     let subject = subject.unwrap_or_else(|| format!("Invoice {}", invoice.number));
+    let had_draft = !body.is_empty();
 
     // Real client-facing delivery through PayPal's own reminder email, when
     // the invoice has a PayPal mirror. Best effort by design (2/day cap).
@@ -687,26 +688,44 @@ async fn send_nudge(state: &AppState, action: &AgentAction, channel: Channel) ->
         false
     };
 
-    state
-        .store
-        .add_message(
-            thread_id,
-            Actor::KindlyAgent,
-            "Kindly",
-            Some(&subject),
-            &format!(
-                "{body}\n\n— {}{}",
-                state.config.owner_name,
-                if paypal_sent {
-                    "\n\n(Sent with a PayPal payment link.)"
-                } else {
-                    ""
-                }
-            ),
-            None,
-            Some("sent"),
-        )
-        .await?;
+    // When the message was already drafted (the normal path), it has been
+    // marked sent and must not be duplicated here.
+    if !had_draft {
+        state
+            .store
+            .add_message(
+                thread_id,
+                Actor::KindlyAgent,
+                "Kindly",
+                Some(&subject),
+                &format!(
+                    "{body}\n\n— {}{}",
+                    state.config.owner_name,
+                    if paypal_sent {
+                        "\n\n(Sent with a PayPal payment link.)"
+                    } else {
+                        ""
+                    }
+                ),
+                None,
+                Some("sent"),
+            )
+            .await?;
+    } else if paypal_sent {
+        // Note the PayPal delivery on the existing letter's thread.
+        state
+            .store
+            .add_message(
+                thread_id,
+                Actor::System,
+                "Kindly system",
+                None,
+                "Delivered with a PayPal payment link.",
+                None,
+                Some("note"),
+            )
+            .await?;
+    }
 
     // Advance the negotiation state machine.
     let mut negotiation = state.store.negotiation(action.invoice_id).await?;
@@ -767,25 +786,26 @@ async fn offer_terms(
         None
     };
 
+    let had_draft = body.is_some();
     let body = body.unwrap_or_else(|| {
-        format!(
-            "Here are the terms we discussed: {summary}. You can pay the first part here.",
-        )
+        format!("Here are the terms we discussed: {summary}. You can pay the first part here.")
     });
     let subject = format!("Invoice {} — plan: {}", invoice.number, summary);
 
-    state
-        .store
-        .add_message(
-            thread_id,
-            Actor::KindlyAgent,
-            "Kindly",
-            Some(&subject),
-            &format!("{body}\n\n— {}", state.config.owner_name),
-            None,
-            Some("sent"),
-        )
-        .await?;
+    if !had_draft {
+        state
+            .store
+            .add_message(
+                thread_id,
+                Actor::KindlyAgent,
+                "Kindly",
+                Some(&subject),
+                &format!("{body}\n\n— {}", state.config.owner_name),
+                None,
+                Some("sent"),
+            )
+            .await?;
+    }
 
     let mut negotiation = state.store.negotiation(action.invoice_id).await?;
     let mandate = state.store.active_mandate().await?;

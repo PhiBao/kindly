@@ -1,0 +1,375 @@
+@import "tailwindcss";
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Kindly — design tokens
+   "The Ledger Desk": cream paper, iron-gall ink, letterpress stamps, tabular
+   figures. Deliberately not a SaaS dashboard: no rounded card soup, no
+   gradients, no glass. Rules, letters, stamps and numbers do the work.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-paper: #f7f2e8;
+  --color-paper-2: #fdfaf3;
+  --color-paper-3: #efe6d4;
+  --color-ink: #16181d;
+  --color-ink-2: #454b59;
+  --color-ink-3: #737a8a;
+  --color-rule: #ddd3c0;
+  --color-rule-2: #c6b8a0;
+  --color-stamp: #a32b1e;
+  --color-stamp-dark: #7a1e14;
+  --color-settled: #1d5b46;
+  --color-amber: #a06d12;
+
+  --font-display: var(--font-instrument-serif), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-inter-tight), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --shadow-paper: 0 1px 0 rgba(22, 24, 29, 0.04), 0 12px 32px -24px rgba(22, 24, 29, 0.35);
+}
+
+/* ── base ─────────────────────────────────────────────────────────────── */
+
+* {
+  border-color: var(--color-rule);
+}
+
+html {
+  background: var(--color-paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-image: radial-gradient(rgba(22, 24, 29, 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv05" 1, "ss03" 1;
+  letter-spacing: -0.006em;
+}
+
+::selection {
+  background: rgba(163, 43, 30, 0.16);
+}
+
+/* ── typography ───────────────────────────────────────────────────────── */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.02;
+}
+
+.letter-body {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  line-height: 1.62;
+  color: var(--color-ink);
+}
+
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: -0.02em;
+}
+
+.mono-xs {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.01em;
+  color: var(--color-ink-3);
+}
+
+/* ── rules & edges ────────────────────────────────────────────────────── */
+
+.rule-t {
+  border-top: 1px solid var(--color-rule);
+}
+.rule-b {
+  border-bottom: 1px solid var(--color-rule);
+}
+.rule-l {
+  border-left: 1px solid var(--color-rule);
+}
+.rule-r {
+  border-right: 1px solid var(--color-rule);
+}
+.rule-heavy-t {
+  border-top: 3px double var(--color-rule-2);
+}
+.rule-heavy-b {
+  border-bottom: 3px double var(--color-rule-2);
+}
+
+.paper-edge {
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  box-shadow: var(--shadow-paper);
+}
+
+.section-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+}
+.section-label::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid var(--color-rule);
+  transform: translateY(-0.25rem);
+}
+
+/* ── stamps ───────────────────────────────────────────────────────────── */
+
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  color: var(--color-stamp);
+  border: 2px solid currentColor;
+  border-radius: 2px;
+  padding: 0.1875rem 0.4375rem;
+  transform: rotate(-2.5deg);
+  opacity: 0.92;
+  background: rgba(163, 43, 30, 0.05);
+}
+
+.stamp--settled {
+  color: var(--color-settled);
+  background: rgba(29, 91, 70, 0.06);
+}
+
+.stamp--quiet {
+  color: var(--color-ink-3);
+  background: transparent;
+  border-style: dashed;
+}
+
+.stamp--live {
+  animation: stamp-thud 480ms cubic-bezier(0.2, 1.5, 0.4, 1) 1;
+}
+
+@keyframes stamp-thud {
+  0% {
+    transform: rotate(-2.5deg) scale(1.9);
+    opacity: 0;
+  }
+  62% {
+    transform: rotate(-2.5deg) scale(0.96);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(-2.5deg) scale(1);
+    opacity: 0.92;
+  }
+}
+
+/* ── controls ─────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  border: 1px solid var(--color-ink);
+  background: transparent;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.4375rem 0.75rem;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+.btn:hover:not(:disabled) {
+  background: var(--color-ink);
+  color: var(--color-paper-2);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.btn--solid {
+  background: var(--color-ink);
+  color: var(--color-paper-2);
+}
+.btn--solid:hover:not(:disabled) {
+  background: var(--color-stamp);
+  border-color: var(--color-stamp);
+}
+.btn--stamp {
+  border-color: var(--color-stamp);
+  color: var(--color-stamp);
+}
+.btn--stamp:hover:not(:disabled) {
+  background: var(--color-stamp);
+  color: var(--color-paper-2);
+}
+.btn--ghost {
+  border-color: transparent;
+  color: var(--color-ink-2);
+  padding-inline: 0.375rem;
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--color-paper-3);
+  color: var(--color-ink);
+}
+.btn--sm {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.field {
+  width: 100%;
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule-2);
+  padding: 0.5rem 0.625rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  outline: none;
+}
+.field:focus {
+  border-color: var(--color-ink);
+  box-shadow: 0 0 0 3px rgba(22, 24, 29, 0.07);
+}
+
+/* ── ledger ───────────────────────────────────────────────────────────── */
+
+.ledger-row {
+  position: relative;
+  transition: background 140ms ease;
+}
+.ledger-row:hover {
+  background: rgba(22, 24, 29, 0.025);
+}
+.ledger-row--new {
+  animation: row-in 520ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+@keyframes row-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+    background: rgba(163, 43, 30, 0.07);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    background: transparent;
+  }
+}
+
+.tick {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-ink-3);
+}
+
+.trust-mark {
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--color-stamp);
+  background: rgba(163, 43, 30, 0.12);
+  display: inline-block;
+  transform: rotate(45deg);
+}
+
+/* ── correspondence ───────────────────────────────────────────────────── */
+
+.letter {
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  padding: 1rem 1.125rem 1.125rem;
+  position: relative;
+}
+.letter--agent {
+  border-left: 3px solid var(--color-ink);
+}
+.letter--client {
+  border-left: 3px solid var(--color-settled);
+}
+.letter--system {
+  background: transparent;
+  border-style: dashed;
+}
+.letter::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(22, 24, 29, 0.04);
+  pointer-events: none;
+}
+
+/* ── negotiation room ─────────────────────────────────────────────────── */
+
+.katp-line {
+  display: grid;
+  grid-template-columns: 2.25rem 1fr;
+  gap: 0.875rem;
+  padding-block: 0.875rem;
+}
+.katp-rail {
+  position: relative;
+}
+.katp-rail::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--color-rule);
+}
+.katp-node {
+  position: relative;
+  z-index: 1;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid var(--color-ink);
+  background: var(--color-paper);
+  transform: rotate(45deg) translateX(-1px);
+  margin-inline: auto;
+}
+.katp-node--buyer {
+  border-color: var(--color-settled);
+}
+
+/* ── utilities ────────────────────────────────────────────────────────── */
+
+.stream-line {
+  animation: row-in 420ms cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+.marquee-fade {
+  mask-image: linear-gradient(to bottom, transparent, black 12px, black calc(100% - 12px), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

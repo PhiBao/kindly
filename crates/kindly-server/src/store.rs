@@ -529,8 +529,35 @@ impl Store {
         intent_json: Option<&str>,
         source: Option<&str>,
     ) -> ApiResult<MessageId> {
+        self.add_message_at(
+            thread_id,
+            author,
+            author_label,
+            subject,
+            body,
+            intent_json,
+            source,
+            Utc::now(),
+        )
+        .await
+    }
+
+    /// Same as [`Store::add_message`], with an explicit timestamp so seeded
+    /// history reads in the right order.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn add_message_at(
+        &self,
+        thread_id: ThreadId,
+        author: Actor,
+        author_label: &str,
+        subject: Option<&str>,
+        body: &str,
+        intent_json: Option<&str>,
+        source: Option<&str>,
+        at: DateTime<Utc>,
+    ) -> ApiResult<MessageId> {
         let id = MessageId::new();
-        let now = Utc::now().to_rfc3339();
+        let now = at.to_rfc3339();
         sqlx::query(
             "INSERT INTO messages (id, thread_id, author, author_label, subject, body, intent_json, source, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -552,6 +579,31 @@ impl Store {
             .execute(&self.pool)
             .await?;
         Ok(id)
+    }
+
+    pub async fn message(&self, message_id: MessageId) -> ApiResult<Option<Message>> {
+        let row = sqlx::query("SELECT * FROM messages WHERE id = ?1")
+            .bind(message_id.to_string())
+            .fetch_optional(&self.pool)
+            .await?;
+        row.as_ref()
+            .map(|row| {
+                Ok(Message {
+                    id: MessageId::from_uuid(
+                        row.get::<String, _>("id")
+                            .parse()
+                            .map_err(|e| ApiError::Internal(format!("message id: {e}")))?,
+                    ),
+                    author: actor_from_key(row.get::<String, _>("author").as_str()),
+                    author_label: row.get("author_label"),
+                    subject: row.get("subject"),
+                    body: row.get("body"),
+                    intent_json: row.get("intent_json"),
+                    source: row.get("source"),
+                    created_at: ts(row.get::<String, _>("created_at").as_str())?,
+                })
+            })
+            .transpose()
     }
 
     pub async fn messages(&self, thread_id: ThreadId) -> ApiResult<Vec<Message>> {
