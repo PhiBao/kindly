@@ -1281,6 +1281,14 @@ pub mod demo {
 
     async fn agent_to_agent(state: &SharedState) -> ApiResult<Value> {
         let invoice = invoice_by_number(state, "1042").await?;
+        // Replayable: clear earlier sessions and let the agent open a fresh one.
+        state.store.delete_a2a_sessions(invoice.id).await?;
+        let mut negotiation = state.store.negotiation(invoice.id).await?;
+        negotiation.stage = kindly_core::negotiation::Stage::Idle;
+        negotiation.contact_count = 0;
+        negotiation.rounds = 0;
+        state.store.save_negotiation(&negotiation).await?;
+        state.buyer_sessions.lock().await.clear();
         let report = engine::tick_invoice(state, invoice.id).await?;
         let sessions = state.store.a2a_sessions_for_invoice(invoice.id).await?;
         Ok(json!({

@@ -56,6 +56,8 @@ pub struct InvoiceBrief {
     /// already in the inbox must not be proposed again — otherwise every
     /// scheduler pass would stack another copy of the same question.
     pub pending_kinds: Vec<ActionKind>,
+    /// A live agent-to-agent session already exists for this invoice.
+    pub open_a2a_session: bool,
     pub pay_link: String,
     /// (author label, text), oldest first.
     pub history: Vec<(String, String)>,
@@ -408,11 +410,13 @@ impl Planner {
             moves.push(Move::Escalate);
         }
 
-        // 4. A client with an AP agent can be negotiated with machine to machine.
+        // 4. A client with an AP agent can be negotiated with machine to machine
+        //    — one live negotiation at a time.
         if brief.client_has_ap_agent
             && mandate.allow_agent_to_agent()
             && brief.stage == Stage::Idle
             && brief.days_overdue >= 5
+            && !brief.open_a2a_session
         {
             moves.push(Move::AgentToAgent);
         }
@@ -766,6 +770,7 @@ mod tests {
             rounds: 0,
             client_has_ap_agent: true,
             pending_kinds: Vec::new(),
+            open_a2a_session: false,
             pay_link: "https://kindly.demo/c/tok".into(),
             history: vec![],
         }
@@ -1043,6 +1048,26 @@ mod tests {
                 kindly_core::policy::ProposedAction::CloseUncollectible { .. }
             )),
             "the owner is not asked the same question twice"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_live_negotiation_is_not_opened_twice() {
+        let planner = Planner::new(
+            Arc::new(NullLlm),
+            Arc::new(crate::systemone::NoSystemOne),
+            "Maya Rodriguez",
+        );
+        let mut brief_with_session = brief();
+        brief_with_session.open_a2a_session = true;
+        brief_with_session.client_has_ap_agent = true;
+        let outcome = planner.plan(&brief_with_session, &mandate()).await;
+        assert!(
+            !outcome.actions.iter().any(|action| matches!(
+                action,
+                kindly_core::policy::ProposedAction::StartAgentNegotiation { .. }
+            )),
+            "a second negotiation would confuse both sides"
         );
     }
 

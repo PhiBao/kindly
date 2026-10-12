@@ -210,6 +210,8 @@ pub struct BriefInputs {
     pub history: Vec<(String, String)>,
     /// Kinds already awaiting the owner's decision on this invoice.
     pub pending_kinds: Vec<ActionKind>,
+    /// A live agent-to-agent session already exists for this invoice.
+    pub open_a2a_session: bool,
     pub pay_link: String,
 }
 
@@ -277,6 +279,19 @@ pub async fn load_brief(state: &AppState, invoice_id: InvoiceId) -> ApiResult<Br
         .map(|action| action.kind)
         .collect();
 
+    let open_a2a_session = store
+        .a2a_sessions_for_invoice(invoice.id)
+        .await?
+        .iter()
+        .any(|session| {
+            matches!(
+                session.status.as_str(),
+                crate::a2a::status::NEGOTIATING
+                    | crate::a2a::status::AWAITING_OWNER
+                    | crate::a2a::status::AWAITING_BUYER
+            )
+        });
+
     Ok(BriefInputs {
         invoice,
         client,
@@ -287,6 +302,7 @@ pub async fn load_brief(state: &AppState, invoice_id: InvoiceId) -> ApiResult<Br
         pending_reply,
         history,
         pending_kinds,
+        open_a2a_session,
         pay_link,
     })
 }
@@ -314,6 +330,7 @@ pub fn brief_for(inputs: &BriefInputs) -> InvoiceBrief {
         rounds: inputs.negotiation.rounds,
         client_has_ap_agent: inputs.has_ap_agent,
         pending_kinds: inputs.pending_kinds.clone(),
+        open_a2a_session: inputs.open_a2a_session,
         pay_link: inputs.pay_link.clone(),
         history: inputs.history.clone(),
     }
