@@ -1,0 +1,52 @@
+# Kindly API on Fly.io — simulation mode with a small persistent volume.
+#
+#   fly apps create kindly-desk-api
+#   fly volumes create kindly_data --region sin --size 1 --app kindly-desk-api
+#   fly secrets set KINDLY_PORTAL_SECRET=... --app kindly-desk-api
+#   fly deploy --app kindly-desk-api
+
+app = "kindly-desk-api"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  KINDLY_PAYPAL_MODE = "sim"
+  KINDLY_SEED = "1"
+  KINDLY_SCHEDULER = "1"
+  KINDLY_DATA_DIR = "/data"
+  KINDLY_OWNER_NAME = "Maya Rodriguez"
+  KINDLY_OWNER_BUSINESS = "Maya Rodriguez Studio"
+  KINDLY_INVOICER_EMAIL = "merchant@kindly.demo"
+  # Portal links must open in the browser, so this is the WEB app's URL, not
+  # this service's. Updated after the web deployment exists.
+  KINDLY_PUBLIC_URL = "https://kindly-desk.vercel.app"
+  RUST_LOG = "info,kindly_server=info"
+
+[[mounts]]
+  source = "kindly_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 100
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

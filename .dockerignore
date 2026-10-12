@@ -1,0 +1,17 @@
+# Build context hygiene: the image only needs the workspace sources.
+target/
+**/target/
+node_modules/
+**/node_modules/
+web/.next/
+.git/
+data/
+*.db
+*.db-shm
+*.db-wal
+docs/screenshots/
+.env
+.env.*
+!.env.example
+fly.toml
+render.yaml
