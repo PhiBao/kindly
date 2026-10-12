@@ -121,6 +121,10 @@ pub struct Invoice {
     pub paypal_invoice_id: Option<String>,
     pub paypal_status: Option<String>,
     pub memo: Option<String>,
+    /// Set when this invoice is an instalment issued under a payment plan:
+    /// payments against it belong to the parent invoice's balance.
+    #[serde(default)]
+    pub parent_invoice_id: Option<InvoiceId>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -156,6 +160,7 @@ impl Invoice {
             paypal_invoice_id: None,
             paypal_status: None,
             memo: None,
+            parent_invoice_id: None,
             created_at: at,
             updated_at: at,
         })

@@ -263,10 +263,39 @@ pub fn classify_heuristically(text: &str, currency: Currency, today: NaiveDate) 
             bps: extract_percentage_bps(text).unwrap_or(500),
         };
     }
-    if contains_any(&lowered, &["installment", "instalment", "split", "part payment", "payment plan", "in two", "half now", "pay half", "phased"]) {
+    if contains_any(
+        &lowered,
+        &[
+            "installment",
+            "instalment",
+            "split",
+            "part payment",
+            "payment plan",
+            "in two",
+            "half now",
+            "pay half",
+            "phased",
+            "now and",
+            "now, and",
+            "the rest on",
+            "the rest in",
+            "rest next",
+            "in two parts",
+            "two payments",
+            "another payment",
+        ],
+    ) {
+        let amounts = extract_amounts(text, currency);
+        let pay_now = amounts.first().copied();
+        let installments = extract_small_integer(text)
+            .or_else(|| {
+                // "…$575 now and $575 on the 20th" — one amount now, one later.
+                (amounts.len() >= 2).then(|| (amounts.len() - 1).min(3) as u8)
+            })
+            .or(Some(2));
         return ReplyIntent::RequestsPlan {
-            pay_now: extract_amount(text, currency),
-            installments: extract_small_integer(text),
+            pay_now,
+            installments,
         };
     }
     if contains_any(&lowered, &["contract", "invoice copy", "send me", "documentation", "receipt", "statement"]) {
@@ -379,7 +408,8 @@ fn extract_percentage_bps(text: &str) -> Option<i32> {
     Some((value * 100.0).round().clamp(0.0, 10_000.0) as i32)
 }
 
-fn extract_amount(text: &str, currency: Currency) -> Option<Money> {
+fn extract_amounts(text: &str, currency: Currency) -> Vec<Money> {
+    let mut out = Vec::new();
     for token in text.split_whitespace() {
         let has_marker = token.contains(['$', '€', '£', '.', ',']);
         if !has_marker {
@@ -393,12 +423,16 @@ fn extract_amount(text: &str, currency: Currency) -> Option<Money> {
             continue;
         }
         if let Ok(money) = Money::parse(&cleaned, currency) {
-            if money.is_positive() && money.minor >= 100 {
-                return Some(money);
+            if money.minor >= 100 {
+                out.push(money);
             }
         }
     }
-    None
+    out
+}
+
+fn extract_amount(text: &str, currency: Currency) -> Option<Money> {
+    extract_amounts(text, currency).into_iter().next()
 }
 
 fn extract_small_integer(text: &str) -> Option<u8> {
@@ -536,5 +570,59 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod regression_tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 10, 12).unwrap()
+    }
+
+    #[test]
+    fn plain_language_plan_requests_are_understood_without_a_model() {
+        let cases = [
+            "Thanks for the update. Could we do $575 now and $575 on the 20th?",
+            "Can we split this over a couple of months?",
+            "Any chance we could pay half now and the rest next month?",
+            "We'd like to pay in two parts if that works.",
+            "Could we arrange a payment plan? $500 now, balance in 30 days.",
+        ];
+        for case in cases {
+            let intent = classify_heuristically(case, Currency::Usd, today());
+            assert!(
+                matches!(intent, ReplyIntent::RequestsPlan { .. }),
+                "expected a plan request from {case:?}, got {intent:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn plan_requests_carry_the_amounts_the_client_offered() {
+        let intent = classify_heuristically(
+            "Could we do $575.00 now and $575.00 on the 20th?",
+            Currency::Usd,
+            today(),
+        );
+        match intent {
+            ReplyIntent::RequestsPlan { pay_now, installments } => {
+                assert_eq!(pay_now.map(|m| m.minor), Some(57_500));
+                assert_eq!(installments, Some(1));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn promises_still_win_over_plan_talk() {
+        // "we'll pay on Friday" must not be read as a plan request.
+        let intent = classify_heuristically("We'll pay the balance on Friday.", Currency::Usd, today());
+        assert!(
+            matches!(intent, ReplyIntent::WillPaySoon { .. }),
+            "got {intent:?}"
+        );
     }
 }

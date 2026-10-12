@@ -260,6 +260,54 @@ impl SimPayPal {
         Ok((capture, vec![event]))
     }
 
+    /// Recreate a sim-side invoice object with a known id. Used at boot so the
+    /// simulator mirrors the database after a restart.
+    #[allow(clippy::too_many_arguments)]
+    pub fn import_invoice(
+        &self,
+        id: &str,
+        number: &str,
+        status: PayPalInvoiceStatus,
+        currency: &str,
+        total_minor: i64,
+        paid_minor: i64,
+        due_date: NaiveDate,
+        client_email: &str,
+        client_name: Option<&str>,
+        memo: Option<&str>,
+        quantity: &str,
+        unit_amount_minor: i64,
+    ) -> PayPalResult<()> {
+        let invoice = SimInvoice {
+            id: id.to_string(),
+            number: number.to_string(),
+            status,
+            currency_code: currency.to_string(),
+            lines: vec![NewInvoiceLine {
+                name: memo.unwrap_or(number).to_string(),
+                description: None,
+                quantity: quantity.to_string(),
+                unit_amount_minor,
+            }],
+            total_minor,
+            paid_minor,
+            due_date,
+            client_email: client_email.to_string(),
+            client_name: client_name.map(str::to_string),
+            memo: memo.map(str::to_string),
+            note: None,
+            created_at: Utc::now(),
+            reminders: Vec::new(),
+            payer_view_url: None,
+        };
+        self.state
+            .lock()
+            .expect("sim state")
+            .invoices
+            .insert(id.to_string(), invoice);
+        Ok(())
+    }
+
     /// Force an invoice into a status for scenario testing (e.g. marking it
     /// overdue). Simulator-only.
     pub fn force_status(&self, invoice_id: &str, status: PayPalInvoiceStatus) -> PayPalResult<()> {

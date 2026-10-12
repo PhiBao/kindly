@@ -19,7 +19,7 @@ pub mod sim;
 pub mod webhook;
 
 pub use error::{PayPalError, PayPalResult};
-pub use live::LivePayPal;
+pub use live::{LiveConfig, LivePayPal};
 pub use model::*;
 pub use sim::SimPayPal;
 

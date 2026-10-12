@@ -417,7 +417,23 @@ impl<'a> PolicyContext<'a> {
     }
 }
 
-fn judge_terms(
+/// Judge a proposed set of terms against the mandate's money rules only.
+///
+/// Used by the agent-to-agent path (where contact caps and quiet hours do not
+/// apply, because the counterparty is a machine).
+pub fn evaluate_terms(
+    terms: &Terms,
+    invoice: &Invoice,
+    mandate: &CollectionMandate,
+    today: Day,
+) -> PolicyDecision {
+    match judge_terms(terms, invoice.outstanding(), mandate, today) {
+        Some(decision) => decision,
+        None => PolicyDecision::Allow,
+    }
+}
+
+pub fn judge_terms(
     terms: &Terms,
     outstanding: Money,
     mandate: &CollectionMandate,

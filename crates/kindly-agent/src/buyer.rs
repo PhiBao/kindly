@@ -108,6 +108,11 @@ impl BuyerAgent {
         }
     }
 
+    /// The agent's public key, safe to publish.
+    pub fn signing_key(&self) -> &SigningKey {
+        &self.signing_key
+    }
+
     pub fn agent_ref(&self) -> AgentRef {
         AgentRef {
             agent_id: self.mandate.agent_id.clone(),
