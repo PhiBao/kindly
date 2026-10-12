@@ -44,14 +44,23 @@ blocks. Replace `‹placeholders›` before submitting.
 > deliveries and enforces the same caps, so the project can be run and judged with no
 > credentials at all.
 >
-> **AI tools.** Kindly uses an OpenAI-compatible language model (`gpt-4o-mini` by default via
-> `KINDLY_LLM_API_KEY`; any OpenAI-compatible endpoint works) for four bounded jobs: reading
-> free-form client replies into closed intents, composing messages in the owner's voice,
-> proposing payment-plan parameters, and choosing the next move from a closed list. The model
-> never authorizes anything: every proposal is judged by a deterministic policy engine against
-> the user's mandate, and the verdict — allowed, needs approval, or blocked — is written to an
-> append-only ledger. With no model configured the product still runs, falling back to
-> deterministic templates and heuristic understanding.
+> **AI tools.** Kindly separates authority (what is allowed) from judgment (what does this
+> mean) and language (how it is said). Authority is code: a deterministic policy engine
+> evaluates every proposal against the user's mandate and records the verdict — allowed, needs
+> approval, or blocked — in an append-only ledger. Nothing a model says can authorise anything.
+>
+> Judgment is **TypeSafe's System One model, Jev**: typed questions (Choice / Score / Noul)
+> answered with probabilities. Kindly asks one batched request per client reply — a Choice over
+> a closed intent set plus a Noul asking whether the message addresses the system rather than
+> the business — and one Choice over the candidate moves when deciding what to do next. The
+> injection case is therefore a calibrated probability rather than only a keyword match, and a
+> low-confidence answer falls back to the built-in reader instead of acting on a coin flip.
+> Every judgment is stored in the ledger with its model name and probabilities.
+>
+> Language is optional: messages are written from deterministic templates by default (free,
+> and identical between takes). Point `KINDLY_LLM_API_KEY` at any OpenAI-compatible endpoint
+> to have the prose generated too. Plan parameters are clamped in code against the mandate, so
+> no model can invent an over-generous plan.
 
 ---
 
@@ -80,15 +89,17 @@ blocks. Replace `‹placeholders›` before submitting.
 
 ## Provide a URL to your public code repository
 
-> `‹https://github.com/…/kindly›` — MIT licensed, with the licence visible in the About
-> section. The README covers what it is, how to run it in simulation mode with no credentials,
-> how to point it at a PayPal sandbox, how to run the unit tests, the end-to-end smoke test and
-> the browser check, and an explicit table of what is real versus simulated.
+> **https://github.com/PhiBao/kindly** — MIT licensed, licence visible in the About section.
+> The README covers what it is, how to run it in simulation mode with no credentials, how to
+> point it at a PayPal sandbox, how to run the unit tests, the end-to-end smoke test and the
+> browser check, and an explicit table of what is real versus simulated.
 
 ## Provide a URL to a working demo
 
-> `‹https://kindly-…onrender.com›` — hosted on Render in simulation mode. The dashboard is
-> open (this deployment moves no real money, and every screen says so).
+> **https://kindly-desk-web.vercel.app** — Next.js on Vercel, Rust API on Fly (SQLite on a
+> Fly volume), running in PayPal simulation mode. The dashboard is open: this deployment moves
+> no real money, and every screen says so. It is verified end to end against the deployed pair
+> (34 API checks + 8 browser checks).
 
 ## Testing instructions or credentials
 
@@ -108,7 +119,13 @@ blocks. Replace `‹placeholders›` before submitting.
 >    tries to instruct the agent** to see the defence.
 >
 > For a full verification run: `python3 scripts/smoke-demo.py` (34 checks) and
-> `cd web && node scripts/verify-ui.mjs`.
+> `cd web && node scripts/verify-ui.mjs`. Against the deployed instance:
+>
+> ```bash
+> python3 scripts/smoke-demo.py --base https://kindly-desk-api.fly.dev
+> cd web && node scripts/verify-ui.mjs --base https://kindly-desk-web.vercel.app \
+>                                      --api https://kindly-desk-api.fly.dev
+> ```
 
 ---
 
@@ -136,9 +153,11 @@ blocks. Replace `‹placeholders›` before submitting.
 
 ## Which AI tools have you leveraged while working on this project?
 
-> OpenAI-compatible chat completions for the product's own drafting and understanding (with a
-> deterministic template fallback), a coding agent (OpenCode) for implementation, review and
-> verification, and Playwright for browser-level checks of every surface.
+> TypeSafe System One (Jev) for the product's typed judgments — reply understanding, the
+> instruction-attempt probability and move selection; OpenAI-compatible chat completions where
+> prose generation is wanted (optional, with a deterministic template fallback); a coding agent
+> (OpenCode) for implementation, review and verification; Playwright for browser-level checks of
+> every surface, including the deployed pair.
 
 ## Describe the level of learning you/your team derived from the project
 

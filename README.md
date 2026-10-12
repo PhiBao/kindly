@@ -10,6 +10,9 @@ exactly what got you paid.
 Built for the **PayPal AI Hackathon: Build what's next with PayPal and AI** (submissions
 close 12 November 2026).
 
+**[Live demo](https://kindly-desk-web.vercel.app)** · **[Source](https://github.com/PhiBao/kindly)** — the demo runs in
+PayPal simulation mode: the whole product works, no credentials are needed, and no real money can move.
+
 <p align="center">
   <img src="docs/diagrams/decision-loop.svg" alt="The model proposes, the mandate disposes, every verdict is recorded" width="880">
 </p>
@@ -159,20 +162,36 @@ the same trait, signs the same webhook deliveries and enforces the same caps, so
 run Kindly end to end with zero credentials. Nothing in the product logic knows which one it
 is talking to — see the honesty table in [Verification](#verification).
 
-### AI, used where language is the work
+### AI, used where judgment is the work
 
-Four jobs, all bounded by the policy engine:
+Kindly separates three things that are usually muddled together: **authority** (what is
+allowed), **judgment** (what does this mean), and **language** (how do we say it). Authority
+is code. Judgment is TypeSafe. Language is optional.
 
-1. **Understanding replies.** "Cash is tight this month — could we split it?" becomes a
-   closed intent (`RequestsPlan { pay_now: $575, installments: 2 }`). Client text is treated
-   as untrusted data, and a deterministic scanner refuses anything addressed at the system.
-2. **Composing in your voice.** Short, human, never apologetic, never threatening.
-   Deterministic templates keep the product fully usable with no model configured.
-3. **Negotiating shape.** The model proposes plan parameters (up-front share, instalments,
-   discount, spacing); `build_terms` clamps them to your mandate, so a creative model cannot
-   invent an over-generous plan.
-4. **Choosing the next move** — from a closed list of moves the policy engine can accept,
-   with a one-line reason that goes into the ledger.
+**Judgment — TypeSafe System One (Jev).** Jev is not a text generator: it answers typed
+questions (Choice / Score / Noul) over a state you supply, with probabilities. That is
+exactly the shape of the two jobs here:
+
+1. **Reading a client reply.** One batched request carries a `Choice` over the closed intent
+   set plus a `Noul` — *"does this reply address the system rather than the business?"* — so
+   an instruction attempt is a **calibrated probability**, not just a keyword hit. Below 0.5
+   confidence on the intent, Kindly keeps its own reading instead of acting on a coin flip;
+   parameters (amounts, dates, counts) are always extracted in code, never asked for.
+2. **Choosing the next move** from the closed candidate list, with the confidence recorded.
+   An answer outside the candidate set is ignored, and the deterministic default stands.
+
+Every judgment is written into the ledger with its model name and probabilities, so a refusal
+can be explained months later. With no key, `NoSystemOne` reports itself disabled and the
+heuristics answer instead — the product never depends on it.
+
+**Language — templates by default.** Short, human, never apologetic, never threatening.
+Deterministic templates cost nothing, never vary between takes, and keep the product fully
+usable with no model at all. Point `KINDLY_LLM_API_KEY` at any OpenAI-compatible endpoint if
+you want the prose generated as well.
+
+**Shape — clamped in code.** Plan parameters (up-front share, instalments, discount, spacing)
+are clamped by `build_terms` against your mandate, so no model — judgment or prose — can
+invent an over-generous plan.
 
 ### Sponsor tools
 
@@ -180,14 +199,15 @@ Four jobs, all bounded by the policy engine:
   to expected payment dates, an exposure doughnut, habit-vs-outcome and attributed-cause
   charts (`/analytics`).
 
-No other sponsor tool is claimed. The submission lists AG Grid only, because that is the one
-used in the product.
+No other hackathon sponsor tool is claimed: AG Grid is the one used in the product. TypeSafe
+(above) is not a sponsor — it is an independent service Kindly integrates because it fits the
+job better than a prose model does.
 
 ### Judging criteria, mapped
 
 | Criterion | Where to look |
 | --- | --- |
-| **Technological implementation** | Rust workspace (`kindly-core`, `kindly-paypal`, `kindly-agent`, `kindly-server`); PayPal Invoicing v2 + Orders + verified webhooks + idempotency; **83 unit tests + 3 integration tests** over the money math, the policy engine, the negotiation state machine, the protocol signatures and the PayPal simulator; a **34-check end-to-end script** |
+| **Technological implementation** | Rust workspace (`kindly-core`, `kindly-paypal`, `kindly-agent`, `kindly-server`); PayPal Invoicing v2 + Orders + verified webhooks + idempotency; TypeSafe System One judgments; **95 unit tests + 3 integration tests** over the money math, the policy engine, the negotiation state machine, the protocol signatures, the judgment merge and the PayPal simulator; a **34-check end-to-end script** |
 | **Design** | A deliberate "ledger desk" identity — paper, iron-gall ink, letterpress stamps, tabular figures, self-hosted OFL fonts, a stamped-K mark and favicon. Not a component library |
 | **Potential impact** | A named user, a measured problem ($17.7K average owed; 42% of freelancers have missed personal bills), and a loop that settles rather than nudges |
 | **Innovation** | Agent-to-agent terms negotiation with signed mandates, a deterministic mandate gate, and honest causal attribution |
@@ -297,7 +317,28 @@ matter.
 Everything in the product works the same way; the badges in the header switch from
 *simulated PayPal* to *PayPal sandbox*.
 
-### An optional language model
+### Deployed demo (what the hosted instance runs)
+
+Two services, both from this repository:
+
+```bash
+# API on Fly (Rust container, 1 GB volume for SQLite)
+fly apps create kindly-desk-api
+fly volumes create kindly_data --region sin --size 1 --app kindly-desk-api
+fly secrets set KINDLY_PORTAL_SECRET=... --app kindly-desk-api
+fly deploy --app kindly-desk-api                      # uses ./Dockerfile + fly.toml
+
+# Web on Vercel (Next.js)
+cd web && vercel link --project kindly-desk-web
+printf 'https://kindly-desk-api.fly.dev' | vercel env add NEXT_PUBLIC_KINDLY_API production
+vercel --prod
+```
+
+Set the API's `KINDLY_PUBLIC_URL` to the **web** URL: client portal links are opened in a
+browser, so they must point at the web app, not the API. `render.yaml` does the same thing
+on Render if you prefer one platform.
+
+### An optional judgment layer (TypeSafe)
 
 Kindly writes from deterministic templates until you give it a model. To use one, set
 `KINDLY_LLM_API_KEY` (and optionally `KINDLY_LLM_BASE_URL`, `KINDLY_LLM_MODEL`). Any
@@ -308,10 +349,12 @@ math and the ledger are identical either way.
 ### Tests
 
 ```bash
-cargo test                                  # 86 tests: 83 unit + 3 integration over the real runtime
+cargo test                                  # 98 tests: 95 unit + 3 integration over the real runtime
 python3 scripts/smoke-demo.py               # 34 end-to-end checks against a running server
 cd web && pnpm typecheck                    # strict TypeScript
 cd web && node scripts/verify-ui.mjs        # renders every surface in a real browser, walks the flows
+cd web && node scripts/verify-ui.mjs --base https://kindly-desk-web.vercel.app \
+                                     --api https://kindly-desk-api.fly.dev   # the deployed pair
 ```
 
 The smoke test is the honest one: it drives the actual pipeline — negotiation, policy
@@ -323,10 +366,11 @@ for each.
 
 ## Demo
 
-**Hosted demo.** Deployed on Render (see `render.yaml`). The dashboard is open in simulation
-mode — there is no real money in it, and the footer of every screen says so. Locally the
-Next.js server proxies `/api/*` to the API so the browser sees one origin; the hosted web
-service calls the API origin directly instead (`NEXT_PUBLIC_KINDLY_API`).
+**Hosted demo:** <https://kindly-desk-web.vercel.app> (Next.js on Vercel, Rust API on Fly,
+SQLite on a Fly volume). It runs in PayPal simulation mode — there is no real money in it, and
+the footer of every screen says so. Locally the Next.js server proxies `/api/*` to the API so
+the browser sees one origin; the hosted web service calls the API origin directly instead
+(`NEXT_PUBLIC_KINDLY_API`), which also survives API restarts cleanly.
 
 **Try this first (in this order).**
 
@@ -459,6 +503,8 @@ docs/submission.md   Devpost answers (tools used, requirements mapping)
 scripts/            dev-server.sh, smoke-demo.py
 render.yaml        one-click deploy: API + web on Render
 ```
+
+**Live:** <https://kindly-desk-web.vercel.app> · **Source:** <https://github.com/PhiBao/kindly>
 
 **Licence.** MIT — see [LICENSE](LICENSE). Bundled fonts are OFL-1.1
 (`web/src/fonts/LICENSES.md`). Kindly is not affiliated with PayPal; PayPal,
