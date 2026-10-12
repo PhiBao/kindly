@@ -95,13 +95,21 @@ Press **Pay with PayPal**, then the **Pay part** button. The PAID stamp lands.
 
 ## 2:45 — 3:00 · The payoff
 
-**On screen:** the desk's proof panel — attribution and the trust column.
+**On screen:** the desk's proof panel — attribution and the trust column, then the security
+event in the ledger.
 
 > "And it tells you the truth about what worked: *paid two days after the second reminder —
 > eleven days earlier than this client's average*, or *paid on their own, Kindly takes no
-> credit*. Everything the agent did, refused, or asked about is in one append-only ledger.
->
-> You do the work. Kindly does the asking."
+> credit*."
+
+If you have the seconds to spare (this is the strongest technical beat after the negotiation),
+open the ledger and show the refusal: *"Refused an instruction aimed at the system — no keyword
+matched, refused on the judgment alone"*, with the model, the probability and the tokens
+attached. Then the close:
+
+> "Everything the agent did, refused, or asked about is in one append-only ledger — including
+> the time a client asked it to write the debt off, and it politely said no. You do the work.
+> Kindly does the asking."
 
 End card: **Kindly — the asking, handled** · demo URL · GitHub URL.
 
