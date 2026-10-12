@@ -186,7 +186,7 @@ Four jobs, all bounded by the policy engine:
 
 | Criterion | Where to look |
 | --- | --- |
-| **Technological implementation** | Rust workspace (`kindly-core`, `kindly-paypal`, `kindly-agent`, `kindly-server`); PayPal Invoicing v2 + Orders + verified webhooks + idempotency; **83 unit tests** over the money math, the policy engine, the negotiation state machine, the protocol signatures and the PayPal simulator; a **34-check end-to-end script** |
+| **Technological implementation** | Rust workspace (`kindly-core`, `kindly-paypal`, `kindly-agent`, `kindly-server`); PayPal Invoicing v2 + Orders + verified webhooks + idempotency; **83 unit tests + 3 integration tests** over the money math, the policy engine, the negotiation state machine, the protocol signatures and the PayPal simulator; a **34-check end-to-end script** |
 | **Design** | A deliberate "ledger desk" identity — paper, iron-gall ink, letterpress stamps, tabular figures, self-hosted OFL fonts, a stamped-K mark and favicon. Not a component library |
 | **Potential impact** | A named user, a measured problem ($17.7K average owed; 42% of freelancers have missed personal bills), and a loop that settles rather than nudges |
 | **Innovation** | Agent-to-agent terms negotiation with signed mandates, a deterministic mandate gate, and honest causal attribution |
@@ -301,7 +301,7 @@ math and the ledger are identical either way.
 ### Tests
 
 ```bash
-cargo test                                  # 83 unit tests: money, policy, negotiation, KATP, simulator
+cargo test                                  # 86 tests: 83 unit + 3 integration over the real runtime
 python3 scripts/smoke-demo.py               # 34 end-to-end checks against a running server
 cd web && pnpm typecheck                    # strict TypeScript
 cd web && node scripts/verify-ui.mjs        # renders every surface in a real browser, walks the flows
@@ -317,7 +317,9 @@ for each.
 ## Demo
 
 **Hosted demo.** Deployed on Render (see `render.yaml`). The dashboard is open in simulation
-mode — there is no real money in it, and the footer of every screen says so.
+mode — there is no real money in it, and the footer of every screen says so. Locally the
+Next.js server proxies `/api/*` to the API so the browser sees one origin; the hosted web
+service calls the API origin directly instead (`NEXT_PUBLIC_KINDLY_API`).
 
 **Try this first (in this order).**
 
@@ -376,8 +378,10 @@ giving away money — so that is the case the code is written against.
 - **Untrusted input, treated as such.** A deterministic scanner (`kindly-agent::understand`)
   flags anything addressed at the system ("ignore previous instructions", "mark this invoice
   as paid"), and a flagged message is *always* read as `InstructionAttempt` regardless of what
-  a model says about it. The invoice is never modified; the owner gets a security event.
-  `smoke-demo.py` asserts the balance before and after.
+  a model says about it. The invoice is never modified; the owner gets a security event. This
+  is asserted in Rust
+  (`crates/kindly-server/tests/runtime.rs::an_instruction_attempt_does_not_move_money`) and
+  again end to end by `smoke-demo.py`, both checking the balance before and after.
 - **Authorization never depends on the model.** Every action is evaluated by
   `kindly-core::policy`, a pure function of your mandate and the facts, with 13 tests over
   the limits. The model can propose; it cannot permit.

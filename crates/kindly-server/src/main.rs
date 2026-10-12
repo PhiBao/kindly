@@ -14,26 +14,15 @@
 //! simulated money moved.
 
 use anyhow::{Context, Result};
-use std::sync::Arc;
-
-mod a2a;
-mod config;
-mod db;
-mod engine;
-mod errors;
-mod events;
-mod portal;
-mod routes;
-mod seed;
-mod state;
-mod store;
-mod sync;
-
-use config::{Config, PayPalMode};
 use kindly_agent::llm::{NullLlm, OpenAiCompat};
 use kindly_paypal::{LivePayPal, PayPalApi, SimPayPal};
-use state::AppState;
-use store::Store;
+use kindly_server::{
+    config::{Config, PayPalMode},
+    db, engine, routes, scheduler, seed,
+    state::AppState,
+    store::Store,
+};
+use std::sync::Arc;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -328,38 +317,4 @@ async fn paypal_check() -> Result<()> {
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
     info!("shutting down");
-}
-
-/// The autonomous pass: advance conversations and reconcile with PayPal.
-mod scheduler {
-    use super::*;
-
-    #[derive(Debug, Default)]
-    pub struct Summary {
-        pub ticks: usize,
-        pub reconciled: usize,
-    }
-
-    pub async fn pass(state: &Arc<AppState>) -> Result<Summary> {
-        let mut summary = Summary::default();
-        let today = chrono::Utc::now().date_naive();
-
-        let invoices = state.store.invoices_with_negotiation().await?;
-        for (invoice, negotiation) in invoices {
-            if !invoice.is_open() {
-                continue;
-            }
-            let due_for_attention = match negotiation.last_contact_at {
-                Some(last) => (chrono::Utc::now() - last).num_days() >= 2,
-                None => true,
-            };
-            if due_for_attention && invoice.days_overdue(today) > 0 {
-                engine::tick_invoice(state, invoice.id).await?;
-                summary.ticks += 1;
-            }
-        }
-
-        summary.reconciled = sync::reconcile(state).await.unwrap_or(0);
-        Ok(summary)
-    }
 }

@@ -95,6 +95,30 @@ impl Config {
         }
     }
 
+    /// A configuration for tests: an in-memory database, simulation mode, no
+    /// network, no credentials. Not part of the product surface.
+    #[doc(hidden)]
+    pub fn for_tests() -> Self {
+        Self {
+            database_url: "sqlite::memory:".to_string(),
+            port: 0,
+            paypal_mode: PayPalMode::Sim,
+            paypal_base_url: "http://localhost".to_string(),
+            paypal_client_id: String::new(),
+            paypal_client_secret: String::new(),
+            paypal_webhook_id: None,
+            invoicer_email: "merchant@kindly.test".to_string(),
+            owner_name: "Maya Rodriguez".to_string(),
+            owner_business: "Maya Rodriguez Studio".to_string(),
+            portal_secret: "test-portal-secret".to_string(),
+            sim_webhook_secret: "test-sim-secret".to_string(),
+            admin_token: String::new(),
+            public_url: "http://localhost:8787".to_string(),
+            seed_on_boot: false,
+            scheduler_enabled: false,
+        }
+    }
+
     pub fn paypal_configured(&self) -> bool {
         !self.paypal_client_id.is_empty() && !self.paypal_client_secret.is_empty()
     }

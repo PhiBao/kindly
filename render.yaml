@@ -58,8 +58,11 @@ services:
     startCommand: cd web && pnpm start
     autoDeploy: true
     envVars:
-      # The Next.js server proxies /api/* to the API service, so the browser
-      # sees one origin and SSE works without CORS.
+      # Baked in at build time: the browser talks to the API service directly
+      # (the API allows any origin, and this survives API restarts cleanly).
+      # Local development uses the Next.js rewrite instead — see next.config.ts.
+      - key: NEXT_PUBLIC_KINDLY_API
+        value: https://kindly-api.onrender.com
       - key: KINDLY_API_ORIGIN
         value: https://kindly-api.onrender.com
       - key: NODE_VERSION
