@@ -32,3 +32,6 @@ web/.env*
 # Tooling caches
 /tmp
 .founder
+
+# TypeScript incremental build info
+*.tsbuildinfo
