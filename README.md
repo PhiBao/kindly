@@ -533,8 +533,6 @@ product.
 
 ```
 LICENSE            MIT
-AGENTS.md          the engineering standards this was built against
-FOUNDER.md         the product principles this was built against
 README.md          this file
 crates/            Rust workspace (core, paypal, agent, server)
 web/               Next.js app (desk, invoice desk, negotiation room, portal, money view)
