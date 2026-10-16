@@ -35,3 +35,6 @@ web/.env*
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Rust compiler crash dumps (never commit these)
+rustc-ice-*.txt
