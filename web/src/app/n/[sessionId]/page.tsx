@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { CounterpartyConsole } from "@/components/counterparty-console";
 import { Badge, Stamp } from "@/components/primitives";
 import { api, type KatpEntry } from "@/lib/api-client";
 import { describeTerms, longDate, money, relative, weekdayList } from "@/lib/format";
@@ -100,6 +101,17 @@ export default function NegotiationRoomPage() {
           accent="settled"
         />
       </div>
+
+      {invoice && (
+        <div className="mt-4">
+          <CounterpartyConsole
+            clientId={invoice.client_id}
+            onChanged={() => {
+              void refresh();
+            }}
+          />
+        </div>
+      )}
 
       <section className="mt-9">
         <div className="rule-heavy-b mb-4 flex items-baseline justify-between gap-4 pb-1.5">

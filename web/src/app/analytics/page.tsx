@@ -55,6 +55,9 @@ function readBook(invoices: InvoiceSummary[]): Reading[] {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   return invoices
+    // Instalments are obligations under their parent; counting them here would
+    // double the exposure picture.
+    .filter((invoice) => !invoice.is_instalment)
     .filter((invoice) => invoice.status !== "paid" && invoice.status !== "cancelled")
     .map((invoice) => {
       const due = new Date(`${invoice.due_date}T00:00:00Z`);
@@ -118,6 +121,7 @@ export default function AnalyticsPage() {
   const clientSeries = useMemo(() => {
     const byClient = new Map<string, { client: string; habit: number; actual: number | null }>();
     for (const invoice of data?.invoices ?? []) {
+      if (invoice.is_instalment) continue;
       const name = invoice.client_name;
       const entry =
         byClient.get(name) ?? { client: name, habit: invoice.behavior?.avg_days_late ?? 0, actual: null };

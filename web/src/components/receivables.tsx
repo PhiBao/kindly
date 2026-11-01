@@ -31,8 +31,11 @@ const STAGE_COPY: Record<string, string> = {
 };
 
 export function ReceivablesLedger({ invoices }: { invoices: InvoiceSummary[] }) {
-  const open = invoices.filter((invoice) => invoice.status !== "paid" && invoice.status !== "cancelled");
-  const settled = invoices.filter((invoice) => invoice.status === "paid");
+  // A plan instalment is an obligation under its parent invoice; showing it as
+  // its own receivable would count the same money twice.
+  const receivables = invoices.filter((invoice) => !invoice.is_instalment);
+  const open = receivables.filter((invoice) => invoice.status !== "paid" && invoice.status !== "cancelled");
+  const settled = receivables.filter((invoice) => invoice.status === "paid");
 
   return (
     <div>
@@ -68,6 +71,17 @@ export function ReceivablesLedger({ invoices }: { invoices: InvoiceSummary[] }) 
                     <> · pays ~{invoice.behavior.avg_days_late}d late</>
                   )}
                 </span>
+                {invoice.plan && invoice.plan.length > 0 && (
+                  <span className="mono-xs mt-1 block text-[var(--color-ink-3)]">
+                    plan ·{" "}
+                    {invoice.plan.filter((instalment) => instalment.status === "paid").length}/
+                    {invoice.plan.length} paid
+                    {invoice.plan
+                      .filter((instalment) => instalment.status !== "paid")
+                      .slice(0, 1)
+                      .map((instalment) => ` · next ${shortDate(instalment.due_date)}`)}
+                  </span>
+                )}
               </span>
 
               <span className="num justify-self-end text-right text-[0.875rem] sm:justify-self-end">

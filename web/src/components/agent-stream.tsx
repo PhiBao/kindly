@@ -61,6 +61,23 @@ export function ApprovalInbox({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draftBody, setDraftBody] = useState("");
+
+  const saveDraft = async (action: AgentAction, subject: string | undefined) => {
+    setBusy(action.id);
+    setNote(null);
+    try {
+      await api.editDraft(action.id, subject, draftBody.trim());
+      setEditing(null);
+      setNote("Draft saved. Approve when it sounds right.");
+      onDone();
+    } catch (cause) {
+      setNote(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const decide = async (action: AgentAction, approve: boolean) => {
     setBusy(action.id);
@@ -101,10 +118,37 @@ export function ApprovalInbox({
                   <p className="mt-1.5 text-[0.75rem] leading-snug text-[var(--color-ink-3)]">{action.rationale}</p>
                 )}
 
-                {draft?.body && (
+                {draft?.body && editing !== action.id && (
                   <div className="letter letter--agent mt-3">
                     {draft.subject && <div className="eyebrow mb-1.5">{draft.subject}</div>}
                     <p className="letter-body whitespace-pre-wrap">{draft.body}</p>
+                    <button
+                      className="btn btn--ghost btn--sm mt-2"
+                      onClick={() => {
+                        setEditing(action.id);
+                        setDraftBody(draft.body ?? "");
+                      }}
+                    >
+                      edit before sending
+                    </button>
+                  </div>
+                )}
+
+                {draft?.body && editing === action.id && (
+                  <div className="mt-3">
+                    <textarea
+                      className="field min-h-[9rem] resize-y"
+                      value={draftBody}
+                      onChange={(event) => setDraftBody(event.target.value)}
+                    />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button className="btn btn--sm" onClick={() => void saveDraft(action, draft.subject)}>
+                        save draft
+                      </button>
+                      <button className="btn btn--ghost btn--sm" onClick={() => setEditing(null)}>
+                        cancel
+                      </button>
+                    </div>
                   </div>
                 )}
 

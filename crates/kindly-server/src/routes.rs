@@ -20,7 +20,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use chrono::{DateTime, Datelike, Utc};
 use futures_util::stream::Stream;
@@ -51,12 +51,18 @@ pub fn router(state: SharedState) -> Router {
         .route("/api", get(api_index))
         .route("/api/health", get(health))
         .route("/api/bootstrap", get(bootstrap))
+        .route("/api/clients", get(list_clients).post(create_client))
+        .route(
+            "/api/clients/{id}/counterparty",
+            get(get_counterparty).put(put_counterparty),
+        )
         .route("/api/invoices", get(list_invoices).post(create_invoice))
         .route("/api/invoices/{id}", get(invoice_detail))
         .route("/api/invoices/{id}/send", post(send_invoice))
         .route("/api/invoices/{id}/tick", post(tick_invoice))
         .route("/api/invoices/{id}/remind", post(remind_invoice))
         .route("/api/actions/{id}/decision", post(decide_action))
+        .route("/api/actions/{id}/draft", put(edit_action_draft))
         .route("/api/mandate", get(get_mandate).put(put_mandate))
         .route("/api/tick", post(tick_all))
         .route("/api/ledger", get(ledger))
@@ -211,13 +217,18 @@ async fn bootstrap(
     for invoice in &invoices {
         let client = clients.iter().find(|c| c.id == invoice.client_id);
         let negotiation = store.negotiation(invoice.id).await?;
-        if invoice.is_open() {
+        // A plan instalment is an obligation *under* the parent invoice, not a
+        // separate receivable. Counting it again would double the same money.
+        let is_instalment = invoice.parent_invoice_id.is_some();
+        if invoice.is_open() && !is_instalment {
             outstanding_total += invoice.outstanding().minor;
             if invoice.days_overdue(today) > 0 {
                 overdue_count += 1;
             }
         }
-        collected_total += invoice.amount_paid.minor;
+        if !is_instalment {
+            collected_total += invoice.amount_paid.minor;
+        }
 
         let sessions = store.a2a_sessions_for_invoice(invoice.id).await?;
         for session in &sessions {
@@ -233,9 +244,30 @@ async fn bootstrap(
             }));
         }
 
+        let is_instalment = invoice.parent_invoice_id.is_some();
+        let plan_instalments: Vec<Value> = invoices
+            .iter()
+            .filter(|candidate| candidate.parent_invoice_id == Some(invoice.id))
+            .map(|candidate| {
+                json!({
+                    "id": candidate.id,
+                    "number": candidate.number,
+                    "status": candidate.status,
+                    "status_label": candidate.status.label(),
+                    "amount": candidate.total.display_with_symbol(),
+                    "outstanding": candidate.outstanding().display_with_symbol(),
+                    "due_date": candidate.due_date,
+                    "paypal_invoice_id": candidate.paypal_invoice_id,
+                })
+            })
+            .collect();
+
         invoice_views.push(json!({
             "id": invoice.id,
             "number": invoice.number,
+            "is_instalment": is_instalment,
+            "parent_invoice_id": invoice.parent_invoice_id,
+            "plan": plan_instalments,
             "status": invoice.status,
             "status_label": invoice.status.label(),
             "currency": invoice.currency.code(),
@@ -285,7 +317,10 @@ async fn bootstrap(
         "outstanding_minor": outstanding_total,
         "collected": Money::new(collected_total, Currency::Usd).display_with_symbol(),
         "overdue_count": overdue_count,
-        "invoices_open": invoices.iter().filter(|i| i.is_open()).count(),
+        "invoices_open": invoices
+            .iter()
+            .filter(|i| i.is_open() && i.parent_invoice_id.is_none())
+            .count(),
         "average_days_saved": average_days_saved,
         "agent_actions": store.count_rows("agent_actions").await?,
         "paypal_events": store.count_rows("paypal_events").await?,
@@ -444,6 +479,228 @@ async fn action_view(state: &SharedState, action: &kindly_core::action::AgentAct
 
 // ─────────────────────────────── invoices ───────────────────────────────
 
+async fn list_clients(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+) -> ApiResult<Json<Value>> {
+    require_owner(&state, &headers)?;
+    let clients = state.store.clients().await?;
+    let mut out = Vec::new();
+    for client in clients {
+        out.push(json!({
+            "id": client.id,
+            "name": client.name,
+            "company": client.company,
+            "display_name": client.display_name(),
+            "email": client.email,
+            "risk_label": client.behavior.risk_band().label(),
+            "has_counterparty_agent": state.store.client_has_ap_agent(client.id).await?,
+        }));
+    }
+    Ok(Json(json!({ "clients": out })))
+}
+
+#[derive(Deserialize)]
+struct CreateClientRequest {
+    name: String,
+    email: String,
+    company: Option<String>,
+    /// Give this client an accounts-payable agent that can negotiate back.
+    #[serde(default)]
+    with_counterparty_agent: bool,
+    notes: Option<String>,
+}
+
+async fn create_client(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateClientRequest>,
+) -> ApiResult<Json<Value>> {
+    require_owner(&state, &headers)?;
+    let name = request.name.trim();
+    let email = request.email.trim();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest("client name is required".into()));
+    }
+    if !email.contains('@') || email.len() < 5 {
+        return Err(ApiError::BadRequest(
+            "a valid client email is required".into(),
+        ));
+    }
+    let now = Utc::now();
+    let mut client = kindly_core::client::Client::new(name, email, now);
+    client.company = request
+        .company
+        .map(|company| company.trim().to_string())
+        .filter(|c| !c.is_empty());
+    client.notes = request.notes;
+    state
+        .store
+        .upsert_client(&client, request.with_counterparty_agent)
+        .await?;
+    engine::Ledger::new(&state.store, Some(&state.events))
+        .note(
+            kindly_core::ids::Actor::Owner,
+            kindly_core::ledger::LedgerKind::System,
+            format!("Added {} as a client", client.display_name()),
+            None,
+        )
+        .await?;
+    Ok(Json(json!({
+        "client_id": client.id,
+        "display_name": client.display_name(),
+    })))
+}
+
+// ── the counterparty's policy (the judge can change how Acme's AP agent behaves)
+
+async fn get_counterparty(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult<Json<Value>> {
+    require_owner(&state, &headers)?;
+    let client_id: kindly_core::ids::ClientId = id
+        .parse()
+        .map_err(|_| ApiError::BadRequest("client id is not valid".into()))?;
+    let client = state.store.client(client_id).await?;
+    let policy = state.store.buyer_policy(client_id).await?;
+    let has_agent = state.store.client_has_ap_agent(client_id).await?;
+    Ok(Json(json!({
+        "client_id": client.id,
+        "company": client.display_name(),
+        "has_counterparty_agent": has_agent,
+        "policy": policy,
+        "defaults": {
+            "max_unapproved_cash_minor": 120_000,
+            "max_total_cash_minor": 1_000_000,
+            "max_installments": 3,
+            "payment_run_weekdays": [4],
+            "discount_ask_bps": 300,
+            "policy": [
+                "Payment runs execute on Fridays.",
+                "Purchases are matched against the engagement before release.",
+                "Anything above $1,200 in a single release needs the finance lead's approval."
+            ],
+        }
+    })))
+}
+
+#[derive(Deserialize)]
+struct CounterpartyPolicy {
+    max_unapproved_cash_minor: i64,
+    #[serde(default)]
+    max_total_cash_minor: Option<i64>,
+    max_installments: u8,
+    #[serde(default)]
+    payment_run_weekdays: Option<Vec<u8>>,
+    #[serde(default)]
+    discount_ask_bps: Option<i32>,
+    #[serde(default)]
+    policy_lines: Option<Vec<String>>,
+}
+
+async fn put_counterparty(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<CounterpartyPolicy>,
+) -> ApiResult<Json<Value>> {
+    require_owner(&state, &headers)?;
+    let client_id: kindly_core::ids::ClientId = id
+        .parse()
+        .map_err(|_| ApiError::BadRequest("client id is not valid".into()))?;
+    let client = state.store.client(client_id).await?;
+    if request.max_unapproved_cash_minor < 0 {
+        return Err(ApiError::BadRequest(
+            "release limit cannot be negative".into(),
+        ));
+    }
+    let policy = json!({
+        "company": client.display_name(),
+        "max_unapproved_cash_minor": request.max_unapproved_cash_minor,
+        "max_total_cash_minor": request.max_total_cash_minor.unwrap_or(1_000_000),
+        "max_installments": request.max_installments.clamp(1, 6),
+        "payment_run_weekdays": request.payment_run_weekdays.unwrap_or_else(|| vec![4]),
+        "discount_ask_bps": request.discount_ask_bps.unwrap_or(300).clamp(0, 2_000),
+        "policy_lines": request.policy_lines.unwrap_or_else(|| vec![
+            format!(
+                "Anything above {} in a single release needs the finance lead's approval.",
+                kindly_core::money::Money::new(request.max_unapproved_cash_minor, kindly_core::money::Currency::Usd)
+                    .display_with_symbol()
+            ),
+        ]),
+    });
+    state.store.set_buyer_policy(client_id, &policy).await?;
+    if !state.store.client_has_ap_agent(client_id).await? {
+        state.store.upsert_client(&client, true).await?;
+    }
+    engine::Ledger::new(&state.store, Some(&state.events))
+        .note(
+            kindly_core::ids::Actor::Owner,
+            kindly_core::ledger::LedgerKind::System,
+            format!(
+                "{}'s counterparty policy updated (release limit {}).",
+                client.display_name(),
+                kindly_core::money::Money::new(
+                    request.max_unapproved_cash_minor,
+                    kindly_core::money::Currency::Usd
+                )
+                .display_with_symbol()
+            ),
+            None,
+        )
+        .await?;
+    Ok(Json(json!({ "policy": policy })))
+}
+
+/// Replace the draft attached to a queued action (the owner edits before approving).
+#[derive(Deserialize)]
+struct EditDraft {
+    subject: Option<String>,
+    body: String,
+}
+
+async fn edit_action_draft(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<EditDraft>,
+) -> ApiResult<Json<Value>> {
+    require_owner(&state, &headers)?;
+    let action_id: kindly_core::ids::ActionId = id
+        .parse()
+        .map_err(|_| ApiError::BadRequest("action id is not valid".into()))?;
+    let action = state.store.action(action_id).await?;
+    if action.status != kindly_core::action::ActionStatus::AwaitingApproval {
+        return Err(ApiError::Conflict(
+            "only an action waiting for your approval can be edited".into(),
+        ));
+    }
+    let body = request.body.trim();
+    if body.is_empty() {
+        return Err(ApiError::BadRequest("the message cannot be empty".into()));
+    }
+    let message_id = state
+        .store
+        .action_draft_message(action_id)
+        .await?
+        .ok_or_else(|| ApiError::Conflict("this action has no drafted message".into()))?;
+    state
+        .store
+        .update_message_content(message_id, request.subject.as_deref(), body)
+        .await?;
+    engine::Ledger::new(&state.store, Some(&state.events))
+        .note(
+            kindly_core::ids::Actor::Owner,
+            kindly_core::ledger::LedgerKind::PolicyApprovalRequested,
+            format!("You edited the draft for: {}", action.kind.label()),
+            Some(action.invoice_id),
+        )
+        .await?;
+    Ok(Json(json!({ "message_id": message_id, "edited": true })))
+}
+
 async fn list_invoices(
     State(state): State<SharedState>,
     headers: HeaderMap,
@@ -598,6 +855,25 @@ async fn invoice_detail(
         crate::portal::PORTAL_TOKEN_TTL_DAYS,
     );
     let today = Utc::now().date_naive();
+    let plan: Vec<Value> = state
+        .store
+        .invoices()
+        .await?
+        .iter()
+        .filter(|candidate| candidate.parent_invoice_id == Some(invoice.id))
+        .map(|instalment| {
+            json!({
+                "id": instalment.id,
+                "number": instalment.number,
+                "status": instalment.status,
+                "status_label": instalment.status.label(),
+                "amount": instalment.total.display_with_symbol(),
+                "outstanding": instalment.outstanding().display_with_symbol(),
+                "due_date": instalment.due_date,
+                "paypal_invoice_id": instalment.paypal_invoice_id,
+            })
+        })
+        .collect();
     let mut action_views = Vec::new();
     for action in &actions {
         action_views.push(action_view(&state, action).await);
@@ -652,6 +928,8 @@ async fn invoice_detail(
             "subject": m.subject,
             "body": m.body,
             "intent": m.intent_json.as_deref().and_then(|i| serde_json::from_str::<Value>(i).ok()),
+            "confidence": m.confidence,
+            "judgment": m.judgment_json.as_deref().and_then(|j| serde_json::from_str::<Value>(j).ok()),
             "at": m.created_at,
         })).collect::<Vec<_>>(),
         "payments": payments.iter().map(|p| json!({
@@ -661,6 +939,7 @@ async fn invoice_detail(
             "source": p.source,
         })).collect::<Vec<_>>(),
         "sessions": sessions,
+        "plan": plan,
         "portal_url": format!("{}/c/{}", state.config.public_url.trim_end_matches('/'), portal_token),
     })))
 }
@@ -1358,7 +1637,20 @@ pub mod demo {
     }
 
     async fn injection(state: &SharedState) -> ApiResult<Value> {
-        let invoice = invoice_by_number(state, "1042").await?;
+        // Prefer the demo invoice, but keep working if the judge has already
+        // settled it: an open invoice is just as good a target.
+        let invoice = match invoice_by_number(state, "1042").await {
+            Ok(invoice) if invoice.is_open() => invoice,
+            _ => state
+                .store
+                .open_invoices()
+                .await?
+                .into_iter()
+                .find(|candidate| candidate.parent_invoice_id.is_none())
+                .ok_or_else(|| {
+                    ApiError::Conflict("no open invoice to demonstrate the refusal on".into())
+                })?,
+        };
         let before = state.store.invoice(invoice.id).await?;
         let (intent, _) = engine::handle_client_message(
             state,

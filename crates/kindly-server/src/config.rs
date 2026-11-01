@@ -43,6 +43,8 @@ pub struct Config {
     pub seed_on_boot: bool,
     /// Run the autonomous scheduler loop.
     pub scheduler_enabled: bool,
+    /// Public demo mode: reseed on every boot and keep the story fresh.
+    pub demo_mode: bool,
 }
 
 impl Config {
@@ -92,6 +94,9 @@ impl Config {
             scheduler_enabled: std::env::var("KINDLY_SCHEDULER")
                 .map(|v| v != "0" && v.to_lowercase() != "false")
                 .unwrap_or(true),
+            demo_mode: std::env::var("KINDLY_DEMO_MODE")
+                .map(|v| v == "1" || v.to_lowercase() == "true")
+                .unwrap_or(false),
         }
     }
 
@@ -116,6 +121,7 @@ impl Config {
             public_url: "http://localhost:8787".to_string(),
             seed_on_boot: false,
             scheduler_enabled: false,
+            demo_mode: false,
         }
     }
 

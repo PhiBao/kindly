@@ -356,16 +356,6 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
         report.proposals = outcome.actions.len();
 
         let ledger = Ledger::new(&state.store, Some(&state.events));
-        for narrative in &outcome.narrative {
-            ledger
-                .note(
-                    Actor::KindlyAgent,
-                    LedgerKind::AgentProposed,
-                    narrative.clone(),
-                    Some(invoice_id),
-                )
-                .await?;
-        }
 
         // Contact history and open-escalation state are read once, then kept
         // up to date as we create actions in this pass.
@@ -405,6 +395,18 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
                 None => None,
             };
 
+            // A block that repeats the previous block on this invoice is not
+            // new information: the scheduler should not stack copies of it.
+            if let PolicyDecision::Block { .. } = &decision {
+                if state
+                    .store
+                    .has_recent_identical_block(invoice_id, proposal.kind(), &decision, 24)
+                    .await?
+                {
+                    continue;
+                }
+            }
+
             let status = match &decision {
                 PolicyDecision::Allow => ActionStatus::Approved,
                 PolicyDecision::RequireApproval { .. } => ActionStatus::AwaitingApproval,
@@ -435,6 +437,26 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
                 .store
                 .set_action_draft_message(action_id, draft_message_id)
                 .await?;
+
+            // Explain the reasoning only when the proposal goes somewhere. A
+            // blocked proposal already has its own line with the reason, so
+            // repeating the narrative would just be noise.
+            if !decision.is_blocked() {
+                if let Some(narrative) = outcome
+                    .narrative
+                    .iter()
+                    .find(|line| line.as_str() != "Default policy for this stage.")
+                {
+                    ledger
+                        .note(
+                            Actor::KindlyAgent,
+                            LedgerKind::AgentProposed,
+                            narrative.clone(),
+                            Some(invoice_id),
+                        )
+                        .await?;
+                }
+            }
 
             match &decision {
                 PolicyDecision::Allow => {
@@ -513,6 +535,21 @@ pub async fn tick_invoice(state: &AppState, invoice_id: InvoiceId) -> ApiResult<
                 open_escalation = true;
             }
         }
+
+        // Decide when this invoice is worth looking at again, so a quiet
+        // receivable is left alone instead of being re-evaluated (and
+        // re-blocked) on every scheduler pass.
+        let mandate = state.store.active_mandate().await?;
+        let gap_days = if report.executed > 0 || report.awaiting_approval > 0 {
+            mandate.min_days_between_contacts.max(1) as i64
+        } else if report.blocked > 0 {
+            1
+        } else {
+            3
+        };
+        let mut negotiation = state.store.negotiation(invoice_id).await?;
+        negotiation.check_again_at(Utc::now() + chrono::Duration::days(gap_days));
+        state.store.save_negotiation(&negotiation).await?;
     }
 
     Ok(report)
@@ -1288,8 +1325,39 @@ pub async fn apply_payment(
         .upsert_client(&client, state.store.client_has_ap_agent(client.id).await?)
         .await?;
 
-    // Attribution for settled invoices.
+    // A settled parent closes the plan: open instalments are no longer owed.
     if fully_settles {
+        let siblings = state.store.invoices().await?;
+        for sibling in siblings
+            .iter()
+            .filter(|candidate| candidate.parent_invoice_id == Some(invoice_id))
+            .filter(|candidate| candidate.is_open())
+        {
+            if let Some(paypal_id) = &sibling.paypal_invoice_id {
+                let _ = state.paypal.cancel_invoice(paypal_id).await;
+            }
+            let mut closed = sibling.clone();
+            closed.mark_cancelled(Utc::now());
+            closed.paypal_status = Some("CANCELLED".to_string());
+            state.store.upsert_invoice(&closed, None).await?;
+            ledger
+                .note(
+                    Actor::System,
+                    LedgerKind::NegotiationEvent,
+                    format!(
+                        "Instalment {} closed — the parent invoice was settled another way.",
+                        sibling.number
+                    ),
+                    Some(sibling.id),
+                )
+                .await?;
+        }
+    }
+
+    // Attribution belongs to the receivable, not to a plan instalment: the
+    // parent settles once all of it has arrived, and that is the story worth
+    // recording. An instalment closing is just a payment.
+    if fully_settles && invoice.parent_invoice_id.is_none() {
         let actions = state.store.actions_for_invoice(invoice_id).await?;
         let action_records = actions
             .iter()
@@ -1303,9 +1371,26 @@ pub async fn apply_payment(
             })
             .collect::<Vec<_>>();
         let payments = state.store.payments(invoice_id).await?;
-        let baseline = Some(client.behavior.avg_days_late as i64 + 30);
-        let attribution =
-            attribution::attribute(&invoice, &action_records, &payments, baseline, Utc::now());
+        // Expected payment date: due date plus whatever this client has
+        // actually done before (never less than a week of grace). Agreed plan
+        // dates are commitments and are handled by the plan branch above.
+        let issued = invoice.issued_at.unwrap_or(invoice.created_at);
+        let expected =
+            invoice.due_date + chrono::Duration::days(client.behavior.avg_days_late.max(7) as i64);
+        let baseline = Some((expected - issued.date_naive()).num_days().max(0));
+        let plan_issued = state
+            .store
+            .plan_exists_for(invoice_id)
+            .await
+            .unwrap_or(false);
+        let attribution = attribution::attribute(
+            &invoice,
+            &action_records,
+            &payments,
+            baseline,
+            plan_issued,
+            Utc::now(),
+        );
         state.store.save_attribution(&attribution).await?;
         ledger
             .note(
@@ -1402,7 +1487,7 @@ pub async fn handle_client_message(
     )
     .await;
 
-    state
+    let message_id = state
         .store
         .add_message(
             thread_id,
@@ -1412,6 +1497,18 @@ pub async fn handle_client_message(
             body,
             Some(&serde_json::to_string(&reading.intent)?),
             Some("sent"),
+        )
+        .await?;
+    state
+        .store
+        .set_message_reading(
+            message_id,
+            reading.confidence,
+            reading
+                .judgment
+                .as_ref()
+                .map(|judgment| judgment.to_string())
+                .as_deref(),
         )
         .await?;
 

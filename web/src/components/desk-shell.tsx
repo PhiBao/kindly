@@ -79,6 +79,9 @@ export function DeskShell({
           <Link className="btn" href="/analytics">
             The money view
           </Link>
+          <Link className="btn btn--stamp" href="/new">
+            Add invoice
+          </Link>
           <button className="btn" onClick={runAgent} disabled={busy !== null}>
             {busy === "tick" ? "Working…" : "Run the agent"}
           </button>

@@ -20,15 +20,24 @@ pub async fn pass(state: &Arc<AppState>) -> Result<Summary> {
     let today = chrono::Utc::now().date_naive();
 
     let invoices = state.store.invoices_with_negotiation().await?;
+    let now = chrono::Utc::now();
     for (invoice, negotiation) in invoices {
         if !invoice.is_open() {
             continue;
         }
-        let due_for_attention = match negotiation.last_contact_at {
-            Some(last) => (chrono::Utc::now() - last).num_days() >= 2,
-            None => true,
-        };
-        if due_for_attention && invoice.days_overdue(today) > 0 {
+        // Instalments are obligations under their parent invoice; the parent's
+        // negotiation drives them, so ticking them would double the work.
+        if invoice.parent_invoice_id.is_some() {
+            continue;
+        }
+        // The runtime schedules its own next look (after a contact, an approval
+        // request, a block, or a quiet spell). Respect that instead of
+        // re-evaluating every invoice every 90 seconds.
+        let due = negotiation
+            .next_check_at
+            .map(|at| at <= now)
+            .unwrap_or(true);
+        if due && invoice.days_overdue(today) > 0 {
             engine::tick_invoice(state, invoice.id).await?;
             summary.ticks += 1;
         }

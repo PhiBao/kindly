@@ -218,6 +218,12 @@ async fn serve(flags: Vec<String>) -> Result<()> {
     let state = build_state_from(config).await?;
 
     if state.config.seed_on_boot {
+        // Public demo: every boot starts from today's dates, so the seeded
+        // story never ages into nonsense (30-day-overdue invoices becoming 60).
+        let reset = reset || state.config.demo_mode;
+        if state.config.demo_mode {
+            info!("demo mode: reseeding the studio with dates relative to today");
+        }
         let summary = seed::seed_demo(&state, reset).await?;
         if summary.already_present {
             info!(

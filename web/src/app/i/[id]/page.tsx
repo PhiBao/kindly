@@ -64,6 +64,7 @@ export default function InvoiceDeskPage() {
 
   const { invoice, client, negotiation, actions, ledger, messages, payments, sessions } = detail;
   const session = sessions[0];
+  const plan = detail.plan ?? [];
 
   return (
     <div className="mx-auto w-full max-w-[1180px] px-5 pb-24 sm:px-8">
@@ -130,6 +131,30 @@ export default function InvoiceDeskPage() {
               </ul>
             </div>
 
+            {plan.length > 0 && (
+              <div className="mt-4 rule-t pt-3">
+                <div className="eyebrow mb-2">Payment plan</div>
+                <ul className="space-y-1.5">
+                  {plan.map((instalment) => (
+                    <li key={instalment.id} className="flex items-baseline justify-between gap-3">
+                      <Link href={`/i/${instalment.id}`} className="num text-[0.8125rem] hover:underline">
+                        {instalment.number}
+                      </Link>
+                      <span className="mono-xs">due {shortDate(instalment.due_date)}</span>
+                      <span className="num text-[0.8125rem]">{instalment.amount}</span>
+                      <Badge tone={instalment.status === "paid" ? "settled" : instalment.status === "cancelled" ? "neutral" : "amber"}>
+                        {instalment.status_label.toLowerCase()}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mono-xs mt-2">
+                  Instalments are dated obligations under this invoice — they do not count as separate
+                  receivables.
+                </p>
+              </div>
+            )}
+
             {payments.length > 0 && (
               <div className="mt-4 rule-t pt-3">
                 <div className="eyebrow mb-2">Payments received</div>
@@ -169,11 +194,25 @@ export default function InvoiceDeskPage() {
                     {message.subject && <div className="mb-1 text-[0.8125rem] font-medium">{message.subject}</div>}
                     <LetterBody>{message.body}</LetterBody>
                     {message.intent && (
-                      <div className="mt-2.5 flex items-center gap-2">
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
                         <span className="mono-xs">read as</span>
                         <Badge tone="neutral">
                           {String((message.intent as { kind?: string }).kind ?? "").replace(/_/g, " ")}
                         </Badge>
+                        {typeof message.confidence === "number" && (
+                          <span className="mono-xs">confidence {message.confidence.toFixed(2)}</span>
+                        )}
+                        {message.judgment && (
+                          <span className="mono-xs">
+                            · TypeSafe {(message.judgment as { model?: string }).model ?? "Jev"}
+                            {(() => {
+                              const answers = (message.judgment as { answers?: Record<string, { noul?: number }> })
+                                .answers;
+                              const sys = answers?.addresses_system?.noul;
+                              return typeof sys === "number" ? ` · addresses-system ${sys.toFixed(2)}` : "";
+                            })()}
+                          </span>
+                        )}
                       </div>
                     )}
                   </li>

@@ -103,6 +103,20 @@ def main() -> int:
         "Brightline has been contacted five times",
         invoice_detail(base, "1027")["negotiation"]["contact_count"] >= 5,
     )
+    receivables = [i for i in bootstrap["invoices"] if not i.get("is_instalment")]
+    total = sum(i["total_minor"] for i in receivables)
+    paid = sum(i["paid_minor"] for i in receivables)
+    outstanding = sum(i["outstanding_minor"] for i in receivables)
+    check(
+        "money reconciles: total = collected + outstanding",
+        total == paid + outstanding,
+        f"{total} = {paid} + {outstanding}",
+    )
+    check(
+        "instalments do not inflate the outstanding total",
+        bootstrap["stats"]["outstanding_minor"] == outstanding,
+        f"{bootstrap['stats']['outstanding_minor']} vs {outstanding}",
+    )
 
     # ── 2. agent-to-agent negotiation ──────────────────────────────────
     print("\nagent-to-agent negotiation (Acme)")
@@ -156,20 +170,31 @@ def main() -> int:
     )
     check("outstanding dropped to $720.00", detail["invoice"]["outstanding"] == "$720.00")
 
-    # ── 5. an instalment is paid, invoice settles ──────────────────────
+    # ── 5. the instalments are paid, the parent settles ────────────────
     print("\nthe client pays the first instalment")
     paid = call(base, "POST", "/api/demo/scenario/plan_instalment_paid")
     check("instalment settled", paid.get("events_processed", 0) >= 1, json.dumps(paid)[:140])
     detail = invoice_detail(base, "1042")
     check(
-        "agreement settled against the parent invoice",
-        detail["invoice"]["outstanding"] in ("$360.00", "$0.00"),
+        "the parent balance moved by the instalment",
+        detail["invoice"]["outstanding"] == "$360.00",
         detail["invoice"]["outstanding"],
     )
-    ledger = call(base, "GET", "/api/ledger?limit=200")
+
+    print("the client pays the final instalment")
+    call(base, "POST", "/api/demo/scenario/plan_instalment_paid")
+    detail = invoice_detail(base, "1042")
+    check("the invoice is settled", detail["invoice"]["status_label"] == "Paid", detail["invoice"]["status_label"])
+    check("nothing is left outstanding", detail["invoice"]["outstanding"] == "$0.00", detail["invoice"]["outstanding"])
+
+    ledger = call(base, "GET", "/api/ledger?limit=300")
+    attribution = next((e for e in ledger if "Attribution" in e.get("summary", "")), None)
+    check("attribution recorded once settled", attribution is not None,
+          (attribution or {}).get("summary", "")[:90])
     check(
-        "attribution recorded once settled",
-        any("Attribution" in e.get("summary", "") for e in ledger),
+        "the plan is credited, not luck",
+        attribution is not None and "plan" in attribution.get("summary", "").lower(),
+        (attribution or {}).get("summary", "?")[:90],
     )
 
     # ── 6. the human conversation path ─────────────────────────────────
@@ -207,7 +232,11 @@ def main() -> int:
         injection.get("outstanding_before") == injection.get("outstanding_after"),
         f"{injection.get('outstanding_before')} -> {injection.get('outstanding_after')}",
     )
-    check("still outstanding", injection.get("still_outstanding") not in (None, "$0.00"), injection.get("still_outstanding", "?"))
+    check(
+        "no payment was recorded by the instruction",
+        injection.get("outstanding_before") == injection.get("outstanding_after"),
+        f"{injection.get('outstanding_before')} -> {injection.get('outstanding_after')}",
+    )
     check("a security event was recorded", bool(injection.get("ledger")))
 
     # ── 8. quiet hours ─────────────────────────────────────────────────

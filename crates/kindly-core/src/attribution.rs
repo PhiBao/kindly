@@ -107,6 +107,9 @@ pub fn attribute(
     actions: &[ActionRecord],
     payments: &[PaymentRecord],
     baseline_days: Option<i64>,
+    // True when a payment plan was issued for this invoice, even if it was
+    // negotiated agent-to-agent rather than through a recorded Kindly action.
+    plan_issued: bool,
     now: Timestamp,
 ) -> Attribution {
     let settlement = payments
@@ -139,18 +142,22 @@ pub fn attribute(
         };
     };
 
-    // 1. Plan settled: an IssuePlan ran before the money landed.
-    if let Some(plan_action) = sorted
+    // 1. Plan settled: an IssuePlan ran before the money landed, or a plan was
+    //    issued for this invoice (the agent-to-agent path does not create an
+    //    AgentAction, but the agreement is just as real).
+    let plan_action = sorted
         .iter()
         .rev()
-        .find(|a| a.kind == ActionKind::IssuePlan && a.at <= settlement.at)
-    {
+        .find(|a| a.kind == ActionKind::IssuePlan && a.at <= settlement.at);
+    if plan_action.is_some() || plan_issued {
         return Attribution {
             id: AttributionId::new(),
             invoice_id: invoice.id,
             kind: CauseKind::PlanSettled,
             confidence: Confidence::High,
-            action_ids: vec![plan_action.id],
+            action_ids: plan_action
+                .map(|action| vec![action.id])
+                .unwrap_or_default(),
             rationale: "The payment followed the plan Kindly negotiated and issued.".to_string(),
             days_to_paid,
             baseline_days,
@@ -265,7 +272,7 @@ mod tests {
             fully_settles: true,
             source: PaymentSource::PayPalInvoice,
         }];
-        let attr = attribute(&inv, &actions, &payments, Some(30), ts(21));
+        let attr = attribute(&inv, &actions, &payments, Some(30), false, ts(21));
         assert_eq!(attr.kind, CauseKind::ReminderLed);
         assert_eq!(attr.confidence, Confidence::High);
         assert_eq!(attr.days_saved, Some(11));
@@ -292,9 +299,25 @@ mod tests {
             fully_settles: true,
             source: PaymentSource::PayPalInvoice,
         }];
-        let attr = attribute(&inv, &actions, &payments, None, ts(21));
+        let attr = attribute(&inv, &actions, &payments, None, false, ts(21));
         assert_eq!(attr.kind, CauseKind::PlanSettled);
         assert_eq!(attr.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn an_agent_negotiated_plan_is_credited_without_a_recorded_action() {
+        let inv = settled_invoice();
+        let payments = vec![PaymentRecord {
+            at: ts(20),
+            amount: Money::new(240_000, Currency::Usd),
+            fully_settles: true,
+            source: PaymentSource::PayPalInvoice,
+        }];
+        // No IssuePlan action exists: the plan came out of agent-to-agent talks.
+        let attr = attribute(&inv, &[], &payments, Some(30), true, ts(21));
+        assert_eq!(attr.kind, CauseKind::PlanSettled);
+        assert_eq!(attr.confidence, Confidence::High);
+        assert!(attr.action_ids.is_empty());
     }
 
     #[test]
@@ -311,7 +334,7 @@ mod tests {
             fully_settles: true,
             source: PaymentSource::PayPalOrder,
         }];
-        let attr = attribute(&inv, &actions, &payments, None, ts(21));
+        let attr = attribute(&inv, &actions, &payments, None, false, ts(21));
         assert_eq!(attr.kind, CauseKind::Organic);
         assert!(attr.action_ids.is_empty());
     }
@@ -319,7 +342,7 @@ mod tests {
     #[test]
     fn unsettled_invoices_are_unknown() {
         let inv = invoice();
-        let attr = attribute(&inv, &[], &[], Some(30), ts(21));
+        let attr = attribute(&inv, &[], &[], Some(30), false, ts(21));
         assert_eq!(attr.kind, CauseKind::Unknown);
     }
 }

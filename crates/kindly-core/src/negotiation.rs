@@ -414,6 +414,11 @@ pub struct Negotiation {
     pub promised_on: Option<Day>,
     pub last_event_at: Timestamp,
     pub paused_until: Option<Timestamp>,
+    /// When the runtime should next consider this invoice. The scheduler uses
+    /// it so a quiet invoice is not re-evaluated (and re-blocked) every 90
+    /// seconds.
+    #[serde(default)]
+    pub next_check_at: Option<Timestamp>,
 }
 
 impl Negotiation {
@@ -429,6 +434,7 @@ impl Negotiation {
             promised_on: None,
             last_event_at: at,
             paused_until: None,
+            next_check_at: None,
         }
     }
 
@@ -437,6 +443,11 @@ impl Negotiation {
 
     fn touch(&mut self, at: Timestamp) {
         self.last_event_at = at;
+    }
+
+    /// Ask the runtime to leave this invoice alone until `at`.
+    pub fn check_again_at(&mut self, at: Timestamp) {
+        self.next_check_at = Some(at);
     }
 
     fn transition(&mut self, to: Stage) -> CoreResult<()> {

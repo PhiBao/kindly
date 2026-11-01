@@ -222,9 +222,14 @@ pub async fn start_session(
     let invoice = state.store.invoice(invoice_id).await?;
     let client = state.store.client(invoice.client_id).await?;
 
-    // The counterparty agent, built from the client's real profile.
-    let mut mandate = BuyerMandate::example(client.display_name());
-    if client.behavior.avg_days_late >= 25 {
+    // The counterparty agent, built from the client's profile and whatever
+    // policy the owner has set for them in the negotiation room.
+    let stored = state.store.buyer_policy(client.id).await?;
+    let mut mandate = match &stored {
+        Some(policy) => BuyerMandate::from_policy(client.display_name(), policy),
+        None => BuyerMandate::example(client.display_name()),
+    };
+    if stored.is_none() && client.behavior.avg_days_late >= 25 {
         mandate.max_unapproved_cash_minor = 60_000;
         mandate
             .policy

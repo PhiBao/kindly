@@ -70,9 +70,23 @@ export interface ClientView {
   invoices_paid: number;
 }
 
+export interface PlanInstalment {
+  id: string;
+  number: string;
+  status: string;
+  status_label: string;
+  amount: string;
+  outstanding: string;
+  due_date: string;
+  paypal_invoice_id: string | null;
+}
+
 export interface InvoiceSummary {
   id: string;
   number: string;
+  is_instalment?: boolean;
+  parent_invoice_id?: string | null;
+  plan?: PlanInstalment[];
   status: string;
   status_label: string;
   currency: string;
@@ -211,6 +225,8 @@ export interface Message {
   subject?: string | null;
   body: string;
   intent?: Record<string, unknown> | null;
+  confidence?: number | null;
+  judgment?: Record<string, unknown> | null;
   at: string;
 }
 
@@ -228,7 +244,9 @@ export interface InvoiceDetail {
     notes: string | null;
     avg_days_late: number;
     risk_label: string;
+    has_counterparty_agent?: boolean;
   };
+  plan: PlanInstalment[];
   negotiation: {
     stage: string;
     contact_count: number;
@@ -321,6 +339,52 @@ export const api = {
 
   decide: (actionId: string, approve: boolean) =>
     post<AgentAction>(`/api/actions/${actionId}/decision`, { approve }),
+
+  editDraft: (actionId: string, subject: string | undefined, body: string) =>
+    put<{ message_id: string; edited: boolean }>(`/api/actions/${actionId}/draft`, { subject, body }),
+
+  createInvoice: (input: {
+    client_id: string;
+    number: string;
+    due_date: string;
+    work_summary?: string;
+    send?: boolean;
+    lines: { description: string; quantity: number; unit_amount_minor: number }[];
+  }) => post<{ invoice_id: string; number: string }>("/api/invoices", input),
+
+  createClient: (input: {
+    name: string;
+    email: string;
+    company?: string;
+    with_counterparty_agent?: boolean;
+  }) => post<{ client_id: string; display_name: string }>("/api/clients", input),
+
+  counterparty: (clientId: string) =>
+    request<{
+      client_id: string;
+      company: string;
+      has_counterparty_agent: boolean;
+      policy: Record<string, unknown> | null;
+      defaults: {
+        max_unapproved_cash_minor: number;
+        max_total_cash_minor: number;
+        max_installments: number;
+        payment_run_weekdays: number[];
+        discount_ask_bps: number;
+        policy: string[];
+      };
+    }>(`/api/clients/${clientId}/counterparty`),
+
+  setCounterparty: (
+    clientId: string,
+    policy: {
+      max_unapproved_cash_minor: number;
+      max_installments: number;
+      payment_run_weekdays: number[];
+      discount_ask_bps: number;
+    },
+  ) => put<{ policy: Record<string, unknown> }>(`/api/clients/${clientId}/counterparty`, policy),
+
 
   mandate: (update: Partial<Mandate> & { contact_window_preset?: string }) =>
     put<Mandate>("/api/mandate", update),

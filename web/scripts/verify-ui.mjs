@@ -113,6 +113,47 @@ ok(`demo data ready (${bootstrap.invoices.length} invoices)`);
   await context.close();
 }
 
+// ── add a client and an invoice with no seeded data ──────────────────────
+{
+  const { page, context } = await openPage("/new");
+  await page.waitForSelector("text=Add an invoice", { timeout: 30_000 });
+  const stamp = Date.now().toString().slice(-6);
+  await page.locator('input[placeholder="Sam Chen"]').fill(`Ruth Okafor ${stamp}`);
+  await page.locator('input[placeholder="Acme Studio"]').fill("Okafor & Co");
+  await page.locator('input[type="email"]').fill(`ruth${stamp}@okafor.test`);
+  await page.getByRole("button", { name: "Add client" }).click();
+  await page.waitForSelector("text=New invoice", { timeout: 30_000 });
+  await page.locator('input[placeholder="1064"]').fill(`9${stamp}`);
+  await page.locator('input[placeholder="1,800.00"]').fill("3200");
+  await page.locator('input[placeholder*="Brand identity sprint"]').fill("Investor deck — 14 slides");
+  await page.getByRole("button", { name: "Create invoice" }).click();
+  await page.waitForURL(/\/i\//, { timeout: 45_000 });
+  await page.waitForSelector("text=Facts", { timeout: 30_000 });
+  const paypal = await page.locator("text=SIM-INV2").count();
+  ok("added a client and invoice through the UI" + (paypal ? " (mirrored into PayPal)" : ""));
+  await page.screenshot({ path: `${SHOTS}/09-new-invoice.png`, fullPage: true });
+  await context.close();
+}
+
+// ── the counterparty console changes the negotiation ─────────────────────
+{
+  const boot = await api("/api/bootstrap");
+  const session = boot.sessions.find((entry) => entry.status !== "settled" && entry.status !== "rejected");
+  if (session) {
+    const { page, context } = await openPage(`/n/${session.id}`);
+    await page.waitForSelector("text=Transcript", { timeout: 30_000 });
+    await page.waitForSelector("text=Their policy", { timeout: 30_000 });
+    await page.getByRole("button", { name: "$600.00" }).click();
+    await page.getByRole("button", { name: "Save their policy" }).click();
+    await page.waitForSelector("text=Their policy saved", { timeout: 30_000 });
+    ok("counterparty policy is editable from the negotiation room");
+    await page.screenshot({ path: `${SHOTS}/10-counterparty.png`, fullPage: true });
+    await context.close();
+  } else {
+    note("no open negotiation to exercise the counterparty console");
+  }
+}
+
 // ── the client portal, including a payment ───────────────────────────────
 {
   const detail = await api(`/api/invoices/${northwind.id}`);

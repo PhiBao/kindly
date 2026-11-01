@@ -41,6 +41,53 @@ pub struct BuyerMandate {
 }
 
 impl BuyerMandate {
+    /// Build from the counterparty policy stored for a client (what the judge
+    /// edits in the negotiation room). Falls back to the believable default for
+    /// any field the policy omits.
+    pub fn from_policy(company: impl Into<String>, policy: &serde_json::Value) -> Self {
+        let mut mandate = Self::example(company);
+        if let Some(limit) = policy
+            .get("max_unapproved_cash_minor")
+            .and_then(|v| v.as_i64())
+        {
+            mandate.max_unapproved_cash_minor = limit.max(0);
+        }
+        if let Some(total) = policy.get("max_total_cash_minor").and_then(|v| v.as_i64()) {
+            mandate.max_total_cash_minor = total.max(1);
+        }
+        if let Some(installments) = policy.get("max_installments").and_then(|v| v.as_u64()) {
+            mandate.max_installments = installments.clamp(1, 6) as u8;
+        }
+        if let Some(days) = policy
+            .get("payment_run_weekdays")
+            .and_then(|v| v.as_array())
+        {
+            let parsed: Vec<u8> = days
+                .iter()
+                .filter_map(|day| day.as_u64())
+                .filter(|day| *day <= 6)
+                .map(|day| day as u8)
+                .collect();
+            if !parsed.is_empty() {
+                mandate.payment_run_weekdays = parsed;
+            }
+        }
+        if let Some(bps) = policy.get("discount_ask_bps").and_then(|v| v.as_i64()) {
+            mandate.discount_ask_bps = bps.clamp(0, 2_000) as i32;
+        }
+        if let Some(lines) = policy.get("policy_lines").and_then(|v| v.as_array()) {
+            let parsed: Vec<String> = lines
+                .iter()
+                .filter_map(|line| line.as_str())
+                .map(str::to_string)
+                .collect();
+            if !parsed.is_empty() {
+                mandate.policy = parsed;
+            }
+        }
+        mandate
+    }
+
     /// A believable mid-size client: pays on Fridays, cannot release large
     /// sums without sign-off, will ask for a small discount if it is asked to
     /// pay sooner than its own schedule.

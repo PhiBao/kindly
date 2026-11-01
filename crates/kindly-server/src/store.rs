@@ -98,6 +98,29 @@ impl Store {
         rows.iter().map(|row| self.row_to_client(row)).collect()
     }
 
+    pub async fn buyer_policy(&self, id: ClientId) -> ApiResult<Option<serde_json::Value>> {
+        let row = sqlx::query("SELECT ap_agent_json FROM clients WHERE id = ?1")
+            .bind(id.to_string())
+            .fetch_one(&self.pool)
+            .await?;
+        let raw: Option<String> = row.get("ap_agent_json");
+        Ok(raw.and_then(|value| serde_json::from_str(&value).ok()))
+    }
+
+    pub async fn set_buyer_policy(
+        &self,
+        id: ClientId,
+        policy: &serde_json::Value,
+    ) -> ApiResult<()> {
+        sqlx::query("UPDATE clients SET ap_agent_json = ?2, updated_at = ?3 WHERE id = ?1")
+            .bind(id.to_string())
+            .bind(policy.to_string())
+            .bind(Utc::now().to_rfc3339())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn client_has_ap_agent(&self, id: ClientId) -> ApiResult<bool> {
         let row = sqlx::query("SELECT has_ap_agent FROM clients WHERE id = ?1")
             .bind(id.to_string())
@@ -379,6 +402,43 @@ impl Store {
         rows.iter().map(|row| self.row_to_action(row)).collect()
     }
 
+    /// Is there a blocked action of this kind on this invoice, with the same
+    /// explanation, within the last `within_hours`? Used so the scheduler does
+    /// not stack copies of the same refusal.
+    pub async fn has_recent_identical_block(
+        &self,
+        invoice_id: InvoiceId,
+        kind: ActionKind,
+        decision: &kindly_core::policy::PolicyDecision,
+        within_hours: i64,
+    ) -> ApiResult<bool> {
+        let cutoff = (Utc::now() - chrono::Duration::hours(within_hours)).to_rfc3339();
+        // Compare the verdict as data (the reason enum), not as prose: the
+        // human sentence changes with the numbers, the verdict does not.
+        let wanted = to_json(decision)?;
+        let rows = sqlx::query(
+            "SELECT decision_json FROM agent_actions
+             WHERE invoice_id = ?1 AND kind = ?2 AND status = 'blocked' AND created_at >= ?3",
+        )
+        .bind(invoice_id.to_string())
+        .bind(action_kind_key(kind))
+        .bind(cutoff)
+        .fetch_all(&self.pool)
+        .await?;
+        for row in rows {
+            let stored: String = row.get("decision_json");
+            if let (Ok(stored_value), Ok(wanted_value)) = (
+                serde_json::from_str::<serde_json::Value>(&stored),
+                serde_json::from_str::<serde_json::Value>(&wanted),
+            ) {
+                if stored_value == wanted_value {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
     /// Actions awaiting the owner's decision — the approval inbox.
     pub async fn pending_approvals(&self) -> ApiResult<Vec<AgentAction>> {
         let rows = sqlx::query(
@@ -460,6 +520,22 @@ impl Store {
         Ok(raw
             .and_then(|value| value.parse().ok())
             .map(MessageId::from_uuid))
+    }
+
+    /// Owner-edited draft: replace the subject and body in place.
+    pub async fn update_message_content(
+        &self,
+        message_id: MessageId,
+        subject: Option<&str>,
+        body: &str,
+    ) -> ApiResult<()> {
+        sqlx::query("UPDATE messages SET subject = ?2, body = ?3 WHERE id = ?1")
+            .bind(message_id.to_string())
+            .bind(subject)
+            .bind(body)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn set_message_source(&self, message_id: MessageId, source: &str) -> ApiResult<()> {
@@ -579,6 +655,22 @@ impl Store {
         Ok(id)
     }
 
+    /// Attach the reader's confidence and judgment to an existing message.
+    pub async fn set_message_reading(
+        &self,
+        message_id: MessageId,
+        confidence: Option<f64>,
+        judgment_json: Option<&str>,
+    ) -> ApiResult<()> {
+        sqlx::query("UPDATE messages SET confidence = ?2, judgment_json = ?3 WHERE id = ?1")
+            .bind(message_id.to_string())
+            .bind(confidence)
+            .bind(judgment_json)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn message(&self, message_id: MessageId) -> ApiResult<Option<Message>> {
         let row = sqlx::query("SELECT * FROM messages WHERE id = ?1")
             .bind(message_id.to_string())
@@ -597,6 +689,8 @@ impl Store {
                     subject: row.get("subject"),
                     body: row.get("body"),
                     intent_json: row.get("intent_json"),
+                    confidence: row.get("confidence"),
+                    judgment_json: row.get("judgment_json"),
                     source: row.get("source"),
                     created_at: ts(row.get::<String, _>("created_at").as_str())?,
                 })
@@ -622,6 +716,8 @@ impl Store {
                     subject: row.get("subject"),
                     body: row.get("body"),
                     intent_json: row.get("intent_json"),
+                    confidence: row.get("confidence"),
+                    judgment_json: row.get("judgment_json"),
                     source: row.get("source"),
                     created_at: ts(row.get::<String, _>("created_at").as_str())?,
                 })
@@ -892,6 +988,16 @@ impl Store {
 
     // ── plans ────────────────────────────────────────────────────────
 
+    /// Does a payment plan exist for this invoice? (The agent-to-agent path
+    /// issues plans without creating an AgentAction, so attribution asks here.)
+    pub async fn plan_exists_for(&self, invoice_id: InvoiceId) -> ApiResult<bool> {
+        let row = sqlx::query("SELECT COUNT(*) AS n FROM plans WHERE invoice_id = ?1")
+            .bind(invoice_id.to_string())
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.get::<i64, _>("n") > 0)
+    }
+
     pub async fn save_plan(
         &self,
         id: PlanId,
@@ -1038,6 +1144,10 @@ pub struct Message {
     pub subject: Option<String>,
     pub body: String,
     pub intent_json: Option<String>,
+    /// How sure the reader was (System One judgments and prose models report it).
+    pub confidence: Option<f64>,
+    /// The compact judgment record, kept with the message that produced it.
+    pub judgment_json: Option<String>,
     pub source: Option<String>,
     pub created_at: DateTime<Utc>,
 }
