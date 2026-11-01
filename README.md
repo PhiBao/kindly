@@ -121,12 +121,23 @@ Brightline Media has ignored five reminders. Set your mandate in one breath —
 *"act within limits, two contacts a week, never below 70% up front, no discounts without
 asking"* — and press **Run the agent**.
 
+**Add your own.** `Add invoice` is a real two-step flow — client, then invoice — that creates
+the invoice in PayPal and hands you the signed client link. Nothing about the product requires
+the seeded studio: the seeded data is a starting point, not the product.
+
 **The primary loop.** The agent reads the situation, decides its move, writes in your voice,
 and either carries it out or stops at your limit. Acme has an accounts-payable agent, so
 Kindly opens machine-to-machine talks instead of sending another email: signed terms go out,
 their agent counters below your floor, **your policy engine refuses automatically**, Kindly
 holds the line, their agent escalates to its finance lead, and the plan is issued as real
 PayPal invoices. Money lands; the ledger records what caused it.
+
+**Their side is a real agent, and you can prove it.** The negotiation room exposes the
+counterparty's own policy — release limit, payment-run weekday, instalment ceiling, discount
+appetite. Change Acme's release limit from $1,200 to $600 and re-run the negotiation: their
+counter moves to $600, their instalments re-date to their payment run, and Kindly still will
+not cross your floor. That is the difference between two agents negotiating and one agent
+talking to a script.
 
 **The emotional payoff** is the stamp. When a plan settles, a **PAID** stamp lands on the
 invoice with a soft thud — the thing every freelancer actually wants to feel.
@@ -249,7 +260,7 @@ a better thing to put in front of money than a sentence.
 | **Potential impact** | A named user, a measured problem ($17.7K average owed; 42% of freelancers have missed personal bills), and a loop that settles rather than nudges |
 | **Innovation** | Agent-to-agent terms negotiation with signed mandates, a deterministic mandate gate, and honest causal attribution |
 | **Presentation** | A three-minute demo built around one memorable moment: two agents settle, and the client's finance lead approves the release |
-| **Evidence** | A calibration table for the judgment thresholds, an append-only ledger that records every refusal with its reason, and 101 automated tests |
+| **Evidence** | A calibration table for the judgment thresholds, an append-only ledger that records every refusal with its reason, a stated attribution formula, and **101 Rust tests + 39 end-to-end checks + 10 browser checks** |
 
 ---
 
@@ -284,10 +295,23 @@ state), `ledger_events` (the audit trail the owner reads), `attributions`, `plan
 happens in exactly one place per operation, half away from zero. No floats touch an amount —
 there are tests that would fail if one did.
 
+**One receivable per obligation.** An agreed payment plan issues dated instalments, each with
+its own PayPal invoice, but the **parent invoice stays the receivable**: instalments never
+inflate outstanding, collected, or the overdue count, and when the parent settles by any
+route the open instalments are cancelled. `total = collected + outstanding` holds per
+receivable, and `smoke-demo.py` asserts it on every run. (An earlier build double-counted
+plan instalments; watching the deployed instance caught it.)
+
 **The runtime.** A request creates or advances an invoice; the scheduler (every 90 seconds)
 and explicit ticks advance open negotiations and reconcile against PayPal. Every outward
 action passes through the policy engine; every outcome — executed, queued, blocked — is
 appended to the ledger and pushed to the UI over server-sent events.
+
+**The scheduler is quiet by design.** Each invoice carries a `next_check_at`, set after every
+pass (after a contact, after an approval request, after a block, or after a quiet spell), and
+identical blocked proposals are recorded once per 24 hours rather than on every pass. A
+receivable nobody needs to touch stops generating ledger noise — which matters, because the
+ledger is the proof surface.
 
 **Contract highlights.**
 
@@ -387,10 +411,10 @@ math and the ledger are identical either way.
 ### Tests
 
 ```bash
-cargo test                                  # 98 tests: 95 unit + 3 integration over the real runtime
-python3 scripts/smoke-demo.py               # 34 end-to-end checks against a running server
+cargo test                                  # 101 tests: 98 unit + 3 integration over the real runtime
+python3 scripts/smoke-demo.py               # 39 end-to-end checks against a running server
 cd web && pnpm typecheck                    # strict TypeScript
-cd web && node scripts/verify-ui.mjs        # renders every surface in a real browser, walks the flows
+cd web && node scripts/verify-ui.mjs        # 10 browser checks: every surface, add-invoice, counterparty, payment
 cd web && node scripts/verify-ui.mjs --base https://kindly-desk-web.vercel.app \
                                      --api https://kindly-desk-api.fly.dev   # the deployed pair
 ```
@@ -398,7 +422,8 @@ cd web && node scripts/verify-ui.mjs --base https://kindly-desk-web.vercel.app \
 The smoke test is the honest one: it drives the actual pipeline — negotiation, policy
 refusal, client approval, plan issue, portal payment, webhook, instalment settlement,
 attribution, the injection scenario, quiet hours and escalation — and prints a pass/fail line
-for each.
+for each. It also asserts the accounting invariant (`total = collected + outstanding`) and
+that plan instalments do not inflate the outstanding total.
 
 ---
 
@@ -409,6 +434,11 @@ SQLite on a Fly volume). It runs in PayPal simulation mode — there is no real 
 the footer of every screen says so. Locally the Next.js server proxies `/api/*` to the API so
 the browser sees one origin; the hosted web service calls the API origin directly instead
 (`NEXT_PUBLIC_KINDLY_API`), which also survives API restarts cleanly.
+
+The hosted instance runs with `KINDLY_DEMO_MODE=1`: it reseeds on every boot, so the seeded
+invoices always carry dates relative to today (an 11-day-overdue invoice never ages into a
+60-day one), and `POST /api/demo/reset` returns it to that state at any time. The scenarios
+panel is the intended way to drive it.
 
 **Try this first (in this order).**
 
@@ -493,6 +523,14 @@ giving away money — so that is the case the code is written against.
 - **Failure handling.** PayPal calls retry with backoff and honour `Retry-After`; a lost
   webhook is caught by the reconciler, which reads the invoice back from PayPal; every failed
   action is recorded with its error and left visible rather than swallowed.
+- **Tooling output is untrusted too.** During a build, Next.js printed an agent-directed
+  instruction ("ask the user… run `next upgrade --agent=security …`"). It came from the
+  framework's own upgrade nudge (`next/dist/lib/upgrade/nudge.js`), not from a compromised
+  package — but it is the same shape as a prompt injection, so it was not executed. The
+  upgrade was made anyway on independent evidence: `pnpm audit` against the npm advisory
+  database, which showed **three advisories against Next.js ≤ 16.4.0** (two critical RCEs, one
+  high-severity DoS). The pin is now 16.4.1 and the audit is clean. Build output is data;
+  it does not command the agent.
 
 Known limitations are listed honestly below — this is a hackathon build, not an audited
 product.

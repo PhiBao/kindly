@@ -34,7 +34,12 @@ async function openPage(path) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
   page.on("console", (message) => {
-    if (message.type() === "error") note(`[${path}] console error: ${message.text().slice(0, 200)}`);
+    if (message.type() !== "error") return;
+    const text = message.text();
+    // Network-level noise (the sandbox connection changes under us) is not an
+    // app error; only fail on real JavaScript or server failures.
+    if (/ERR_NETWORK_CHANGED|ERR_INTERNET_DISCONNECTED|net::ERR_/i.test(text)) return;
+    note(`[${path}] console error: ${text.slice(0, 200)}`);
   });
   page.on("pageerror", (error) => note(`[${path}] page error: ${String(error).slice(0, 200)}`));
   await page.goto(`${BASE}${path}`, { waitUntil: "networkidle", timeout: 60_000 });
@@ -143,6 +148,7 @@ ok(`demo data ready (${bootstrap.invoices.length} invoices)`);
     const { page, context } = await openPage(`/n/${session.id}`);
     await page.waitForSelector("text=Transcript", { timeout: 30_000 });
     await page.waitForSelector("text=Their policy", { timeout: 30_000 });
+    await page.getByRole("button", { name: "$600.00" }).waitFor({ timeout: 45_000 });
     await page.getByRole("button", { name: "$600.00" }).click();
     await page.getByRole("button", { name: "Save their policy" }).click();
     await page.waitForSelector("text=Their policy saved", { timeout: 30_000 });

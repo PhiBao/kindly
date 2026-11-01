@@ -107,7 +107,9 @@ blocks. Replace `‹placeholders›` before submitting.
 > **https://kindly-desk-web.vercel.app** — Next.js on Vercel, Rust API on Fly (SQLite on a
 > Fly volume), running in PayPal simulation mode with the TypeSafe judgment layer enabled. The
 > dashboard is open: this deployment moves no real money, and every screen says so. It is
-> verified end to end against the deployed pair (34 API checks + 8 browser checks).
+> verified end to end against the deployed pair (39 API checks + 10 browser checks), including
+> creating a client and invoice with no seeded data, changing the counterparty's policy, and
+> settling a payment.
 
 ## Testing instructions or credentials
 
@@ -126,7 +128,7 @@ blocks. Replace `‹placeholders›` before submitting.
 > 4. Back on the desk, read the agent's trail and the proof panel; press **Scenarios → A client
 >    tries to instruct the agent** to see the defence.
 >
-> For a full verification run: `python3 scripts/smoke-demo.py` (34 checks) and
+> For a full verification run: `python3 scripts/smoke-demo.py` (39 checks) and
 > `cd web && node scripts/verify-ui.mjs`. Against the deployed instance:
 >
 > ```bash
