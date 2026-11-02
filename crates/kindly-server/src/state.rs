@@ -29,6 +29,9 @@ pub struct AppState {
     /// Live agent-to-agent sessions. Buyer agents hold ephemeral signing keys;
     /// the transcripts themselves are persisted in the database.
     pub buyer_sessions: Arc<Mutex<HashMap<String, Arc<BuyerAgent>>>>,
+    /// Serialises background PayPal mirror passes: two callers must never
+    /// create two invoice objects for the same receivable.
+    pub mirror_lock: tokio::sync::Mutex<()>,
     /// Kindly's own agent key, used to sign its side of agent-to-agent talks.
     pub seller_key: SigningKey,
     pub seller_agent_id: String,
@@ -59,6 +62,7 @@ impl AppState {
             planner,
             events: EventBus::new(),
             buyer_sessions: Arc::new(Mutex::new(HashMap::new())),
+            mirror_lock: tokio::sync::Mutex::new(()),
             seller_key: SigningKey::generate(&mut OsRng),
             seller_agent_id: "kindly-collections".to_string(),
             started_at: Utc::now(),

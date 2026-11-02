@@ -1898,6 +1898,14 @@ async fn demo_reset(
 ) -> ApiResult<Json<Value>> {
     require_owner(&state, &headers)?;
     let summary = crate::seed::seed_demo(&state, true).await?;
+    if state.config.paypal_mode == PayPalMode::Live {
+        let state = state.clone();
+        tokio::spawn(async move {
+            if let Err(error) = engine::mirror_unmirrored(&state).await {
+                tracing::warn!(%error, "background PayPal mirror after reset failed");
+            }
+        });
+    }
     state.events.publish("demo_reset", json!({}));
     Ok(Json(json!(summary)))
 }

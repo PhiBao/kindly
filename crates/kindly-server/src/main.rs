@@ -314,6 +314,19 @@ async fn serve(flags: Vec<String>) -> Result<()> {
         });
     }
 
+    // Imported receivables get their PayPal objects once the socket is open,
+    // so a cold start is never held hostage by an external API. In simulation
+    // this completes instantly; in live mode it takes a few seconds and the
+    // desk is usable meanwhile.
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            if let Err(error) = engine::mirror_unmirrored(&state).await {
+                warn!(%error, "background PayPal mirror pass failed");
+            }
+        });
+    }
+
     let app = routes::router(state.clone());
     let addr = format!("0.0.0.0:{}", state.config.port);
     let listener = tokio::net::TcpListener::bind(&addr)

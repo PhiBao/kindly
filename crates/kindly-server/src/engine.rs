@@ -192,6 +192,53 @@ fn is_invoicing_unavailable(error: &kindly_paypal::PayPalError) -> bool {
     )
 }
 
+/// Give every receivable that has no PayPal mirror one, in the background.
+///
+/// Imported invoices (the seeded studio, anything a freelancer brings with them)
+/// must appear instantly; the PayPal object can catch up a few seconds later.
+/// Runs once per boot, and never fails the server: each invoice records its own
+/// success or failure in the ledger.
+pub async fn mirror_unmirrored(state: &AppState) -> ApiResult<usize> {
+    // One pass at a time. A boot and a demo reset can race; the second pass
+    // must see the first pass's ids and do nothing.
+    let _guard = state.mirror_lock.lock().await;
+    let mut mirrored = 0;
+    for invoice in state.store.invoices().await? {
+        if invoice.paypal_invoice_id.is_some() || invoice.parent_invoice_id.is_some() {
+            continue;
+        }
+        let Ok(client) = state.store.client(invoice.client_id).await else {
+            continue;
+        };
+        let work = state.store.invoice_work_summary(invoice.id).await?;
+        let mut invoice = invoice;
+        match push_invoice_to_paypal(state, &mut invoice, &client, work.as_deref()).await {
+            Ok(()) => {
+                if let Some(paypal_id) = invoice.paypal_invoice_id.clone() {
+                    // It was issued elsewhere; make it payable without emailing.
+                    match state.paypal.send_invoice_silently(&paypal_id).await {
+                        Ok(()) => {
+                            invoice.paypal_status = Some("SENT".to_string());
+                            state.store.upsert_invoice(&invoice, None).await?;
+                        }
+                        Err(error) => {
+                            warn!(invoice = %invoice.number, %error, "could not mark the PayPal mirror sent");
+                        }
+                    }
+                }
+                mirrored += 1;
+            }
+            Err(error) => {
+                warn!(invoice = %invoice.number, %error, "background PayPal mirror failed");
+            }
+        }
+    }
+    if mirrored > 0 {
+        info!(mirrored, "PayPal mirrors created in the background");
+    }
+    Ok(mirrored)
+}
+
 /// Send an invoice to the client through PayPal.
 pub async fn send_invoice_via_paypal(
     state: &AppState,

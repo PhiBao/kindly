@@ -28,7 +28,7 @@ pub struct SeedSummary {
     pub already_present: bool,
 }
 
-pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> {
+pub async fn seed_demo(state: &std::sync::Arc<AppState>, reset: bool) -> ApiResult<SeedSummary> {
     if reset {
         state.store.clear_all().await?;
     }
@@ -199,6 +199,10 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         now,
     )?;
 
+    // Persist the receivables first and get out of the way. Mirroring them
+    // into PayPal happens after the server is listening (see
+    // `engine::mirror_unmirrored`), so a cold start serves the desk in
+    // milliseconds instead of waiting on four PayPal round-trips.
     for (invoice, work, client) in [
         (&acme_invoice, &acme_invoice_work, &acme),
         (&northwind_invoice, &northwind_invoice_work, &northwind),
@@ -206,45 +210,22 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         (&kestrel_invoice, &kestrel_invoice_work, &kestrel),
     ] {
         let mut invoice = invoice.clone();
-        // A demo must boot with PayPal unreachable, misconfigured, or annoyed.
-        // The invoice exists in Kindly either way; the portal can still take a
-        // Checkout payment, and the failure stays visible in the ledger.
-        if let Err(error) =
-            engine::push_invoice_to_paypal(state, &mut invoice, client, work.as_deref()).await
-        {
-            tracing::warn!(invoice = %invoice.number, %error, "seed: PayPal invoice not created");
-            ledger
-                .note(
-                    Actor::PayPal,
-                    LedgerKind::ActionFailed,
-                    format!(
-                        "Could not create the PayPal mirror for {}: {error}. The receivable still works through Checkout.",
-                        invoice.number
-                    ),
-                    Some(invoice.id),
-                )
-                .await?;
+        // These were issued before Kindly existed. They are already overdue and
+        // already sent; nothing should email the client again.
+        invoice.mark_sent(invoice.issued_at.unwrap_or(now));
+        if invoice.due_date < today {
+            invoice.mark_overdue();
         }
-        if let Some(paypal_id) = invoice.paypal_invoice_id.clone() {
-            // These invoices were issued before Kindly existed: make them
-            // payable without PayPal emailing a client who was billed weeks ago.
-            match state.paypal.send_invoice_silently(&paypal_id).await {
-                Ok(()) => {
-                    invoice.mark_sent(Utc::now());
-                    invoice.paypal_status = Some("SENT".to_string());
-                    state.store.upsert_invoice(&invoice, None).await?;
-                }
-                Err(error) => {
-                    tracing::warn!(invoice = %invoice.number, %error, "seed: PayPal send failed");
-                }
-            }
-        }
+        state
+            .store
+            .upsert_invoice(&invoice, work.as_deref())
+            .await?;
         ledger
             .note(
                 Actor::Owner,
                 LedgerKind::InvoiceSent,
                 format!(
-                    "Sent invoice {} to {} — {} due {}",
+                    "Imported invoice {} from {} — {} due {}",
                     invoice.number,
                     client.display_name(),
                     invoice.total.display_with_symbol(),
@@ -276,6 +257,13 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
     let mut negotiation = state.store.negotiation(brightline_invoice.id).await?;
     negotiation.stage = Stage::Idle;
     state.store.save_negotiation(&negotiation).await?;
+
+    // In simulation the mirrors are instant and the demo scenarios need them
+    // immediately. Against PayPal the caller mirrors in the background, so a
+    // reset returns in milliseconds.
+    if state.config.paypal_mode == crate::config::PayPalMode::Sim {
+        engine::mirror_unmirrored(state).await?;
+    }
 
     Ok(SeedSummary {
         clients: 4,
