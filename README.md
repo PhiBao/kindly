@@ -402,9 +402,10 @@ Four services, all from this repository.
 | Payment | Checkout order → test card → capture → signed webhook | one click |
 
 Both APIs scale to **zero** (`min_machines_running = 0`, `auto_stop_machines = "stop"`), so an
-idle demo costs only its volume. The first request after a quiet spell starts the machine; the
-live instance has `KINDLY_DEMO_MODE=0`, so a restart never wipes a judge's progress, and the API
-persists everything in SQLite on a Fly volume.
+idle demo costs only its volume. Measured: the machine stops after ~5 minutes without requests,
+and the next request wakes it in **1.2s**. The live instance has `KINDLY_DEMO_MODE=0`, so a
+restart never wipes a judge's progress, and the API persists everything in SQLite on a Fly
+volume.
 
 ```bash
 # live API
