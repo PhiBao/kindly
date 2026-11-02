@@ -477,9 +477,10 @@ no real money can move. If you would rather not type card details, the
 [simulation](https://kindly-desk-sim.vercel.app) runs the same product with a one-click
 simulated PayPal.
 
-The live instance is seeded with four receivables and keeps its state across restarts; the
-panel plus `POST /api/demo/reset` returns it to the seeded story. The simulation reseeds on
-every boot so its dates are always relative to today.
+Both instances are seeded with four receivables and keep their state across restarts (and
+across scale-to-zero); `POST /api/demo/reset` returns either one to the seeded story. The
+simulation used to reseed on every boot, which a stopped machine would have done on every
+visit — so it no longer does.
 
 **Try this first (in this order).**
 

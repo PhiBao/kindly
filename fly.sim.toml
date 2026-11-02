@@ -19,8 +19,10 @@ primary_region = "sin"
 [env]
   KINDLY_PAYPAL_MODE = "sim"
   KINDLY_SEED = "1"
-  # The simulation is a story, so every boot starts it from today's dates.
-  KINDLY_DEMO_MODE = "1"
+  # Keep the story across wakes: a stopped machine restarts on the next request,
+  # and reseeding there would discard whatever a judge was looking at. Reset is
+  # explicit (POST /api/demo/reset).
+  KINDLY_DEMO_MODE = "0"
   KINDLY_SCHEDULER = "1"
   KINDLY_DATA_DIR = "/data"
   KINDLY_OWNER_NAME = "Maya Rodriguez"
