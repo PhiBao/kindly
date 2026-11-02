@@ -44,12 +44,6 @@ primary_region = "sin"
     hard_limit = 200
     soft_limit = 100
 
-[[http_service.checks]]
-  interval = "30s"
-  timeout = "5s"
-  grace_period = "20s"
-  method = "GET"
-  path = "/api/health"
 
 [[vm]]
   size = "shared-cpu-1x"

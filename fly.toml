@@ -36,7 +36,9 @@ primary_region = "sin"
   internal_port = 8787
   force_https = true
   # Scale to zero. A stopped machine costs nothing; Fly starts it on the next
-  # request. The live instance does not reseed on boot, so a judge's state survives.
+  # request. There is deliberately no health-check poller: it would wake the
+  # machine every few minutes and defeat the point. The API's own /api/health is
+  # still there for a human or an uptime monitor to call.
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0
@@ -46,13 +48,6 @@ primary_region = "sin"
     hard_limit = 200
     soft_limit = 100
 
-[[http_service.checks]]
-  interval = "30s"
-  timeout = "5s"
-  # Generous: a cold boot seeds the studio and probes PayPal before serving.
-  grace_period = "45s"
-  method = "GET"
-  path = "/api/health"
 
 [[vm]]
   size = "shared-cpu-1x"
