@@ -73,7 +73,7 @@ export default function SimPage() {
             guest”. You are returned here and the invoice settles.
           </p>
           <a className="btn btn--solid mt-4" href={LIVE_URL}>
-            "Open the live desk"
+            Open the live desk
           </a>
         </section>
 
