@@ -402,10 +402,16 @@ Four services, all from this repository.
 | Payment | Checkout order → test card → capture → signed webhook | one click |
 
 Both APIs scale to **zero** (`min_machines_running = 0`, `auto_stop_machines = "stop"`), so an
-idle demo costs only its volume. Measured: the machine stops after ~5 minutes without requests,
-and the next request wakes it in **1.2s**. The live instance has `KINDLY_DEMO_MODE=0`, so a
-restart never wipes a judge's progress, and the API persists everything in SQLite on a Fly
-volume.
+idle demo costs only its volume. Measured on both apps: the machine stops after roughly five
+minutes without requests, Fly starts it in **0.7 to 0.9 seconds**, and a cold API call finishes
+in **1 to 3 seconds** including TLS. The desk shows its loading state while that happens, and
+the first request is the only slow one. The live instance has `KINDLY_DEMO_MODE=0`, so a restart
+never wipes a judge's progress, and the API persists everything in SQLite on a Fly volume.
+
+There is deliberately no health-check poller: Fly's checks woke the stopped machine every few
+minutes, which produced a stop-start loop. `/api/health` is still there for a human or an uptime
+monitor. A PayPal webhook also wakes the machine, in about a second, well inside PayPal's retry
+window.
 
 ```bash
 # live API
