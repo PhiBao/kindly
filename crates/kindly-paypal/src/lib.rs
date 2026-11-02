@@ -40,6 +40,12 @@ pub trait PayPalApi: Send + Sync {
         note: &str,
     ) -> PayPalResult<()>;
 
+    /// Mark an invoice sent without emailing anyone. Used for receivables that
+    /// already existed before Kindly (their client was billed long ago): the
+    /// PayPal invoice must be payable, but PayPal must not mail a fictional
+    /// address on the studio's behalf.
+    async fn send_invoice_silently(&self, paypal_invoice_id: &str) -> PayPalResult<()>;
+
     /// Send PayPal's own reminder for an invoice (max two per day, per PayPal).
     async fn remind_invoice(
         &self,

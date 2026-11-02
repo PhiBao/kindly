@@ -8,8 +8,12 @@ pub enum PayPalError {
     #[error("paypal api error {status} ({issue}): {message}")]
     Api {
         status: u16,
+        /// Top-level error name, e.g. UNPROCESSABLE_ENTITY.
         issue: String,
         message: String,
+        /// The first entry in PayPal's `details` array, when present. This is
+        /// the actionable part: DUPLICATE_INVOICE_NUMBER, INVOICER_NOT_FOUND…
+        detail_issue: Option<String>,
     },
 
     #[error("paypal authentication failed: {0}")]

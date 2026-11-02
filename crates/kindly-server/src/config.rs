@@ -106,8 +106,10 @@ impl Config {
             paypal_webhook_id: std::env::var("PAYPAL_WEBHOOK_ID")
                 .ok()
                 .filter(|s| !s.is_empty()),
-            invoicer_email: std::env::var("KINDLY_INVOICER_EMAIL")
-                .unwrap_or_else(|_| "merchant@kindly.demo".to_string()),
+            // Empty means "the account that owns the API credentials", which
+            // is what PayPal uses by default. A made-up address here would make
+            // PayPal refuse to send, so there is no fake default.
+            invoicer_email: std::env::var("KINDLY_INVOICER_EMAIL").unwrap_or_default(),
             owner_name: std::env::var("KINDLY_OWNER_NAME")
                 .unwrap_or_else(|_| "Maya Rodriguez".to_string()),
             owner_business: std::env::var("KINDLY_OWNER_BUSINESS")
@@ -144,7 +146,7 @@ impl Config {
             paypal_client_id: String::new(),
             paypal_client_secret: String::new(),
             paypal_webhook_id: None,
-            invoicer_email: "merchant@kindly.test".to_string(),
+            invoicer_email: String::new(),
             owner_name: "Maya Rodriguez".to_string(),
             owner_business: "Maya Rodriguez Studio".to_string(),
             portal_secret: "test-portal-secret".to_string(),

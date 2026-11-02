@@ -127,6 +127,27 @@ impl LivePayPal {
         Ok(access_token)
     }
 
+    /// Create one PayPal invoice with an explicit number (the retry path
+    /// changes it, so it is a parameter rather than read from the request).
+    async fn create_invoice_once(
+        &self,
+        request: NewInvoice,
+        number: &str,
+    ) -> PayPalResult<PayPalInvoice> {
+        let mut body = PayPalInvoice::build_create_body(&request);
+        body["detail"]["invoice_number"] = json!(number);
+        let request_id = format!("kindly-inv-{}", uuid::Uuid::now_v7());
+        let (_, value, _) = self
+            .call(
+                Method::POST,
+                "/v2/invoicing/invoices",
+                Some(&request_id),
+                Some(&body),
+            )
+            .await?;
+        PayPalInvoice::from_resource(&value)
+    }
+
     /// One API call with auth, idempotency key, and bounded retries.
     async fn call(
         &self,
@@ -195,19 +216,24 @@ impl LivePayPal {
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
                 .to_string();
+            let first_detail = value
+                .get("details")
+                .and_then(|d| d.as_array())
+                .and_then(|a| a.first());
             let message = value
                 .get("message")
                 .and_then(|v| v.as_str())
                 .or_else(|| {
-                    value
-                        .get("details")
-                        .and_then(|d| d.as_array())
-                        .and_then(|a| a.first())
+                    first_detail
                         .and_then(|d| d.get("description"))
                         .and_then(|v| v.as_str())
                 })
                 .unwrap_or("paypal api error")
                 .to_string();
+            let detail_issue = first_detail
+                .and_then(|d| d.get("issue"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
 
             let retryable = matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504);
             if retryable && attempt < 3 {
@@ -228,10 +254,27 @@ impl LivePayPal {
             if status == StatusCode::NOT_FOUND {
                 return Err(PayPalError::NotFound(path.to_string()));
             }
+            // Put the actionable issue in the message: a log line that says
+            // only "unprocessable entity" is useless at 2am.
+            let message = match &detail_issue {
+                Some(detail) => {
+                    let field = first_detail
+                        .and_then(|d| d.get("field"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-");
+                    let why = first_detail
+                        .and_then(|d| d.get("description"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    format!("{message} [{detail} at {field}: {why}]")
+                }
+                None => message,
+            };
             return Err(PayPalError::Api {
                 status: status.as_u16(),
                 issue,
                 message,
+                detail_issue,
             });
         }
     }
@@ -240,17 +283,30 @@ impl LivePayPal {
 #[async_trait]
 impl PayPalApi for LivePayPal {
     async fn create_invoice(&self, request: NewInvoice) -> PayPalResult<PayPalInvoice> {
-        let body = PayPalInvoice::build_create_body(&request);
-        let request_id = format!("kindly-inv-{}", uuid::Uuid::now_v7());
-        let (_, value, _) = self
-            .call(
-                Method::POST,
-                "/v2/invoicing/invoices",
-                Some(&request_id),
-                Some(&body),
-            )
-            .await?;
-        PayPalInvoice::from_resource(&value)
+        // PayPal invoice numbers are unique per merchant. A demo reset reuses
+        // Kindly's human numbers, so a collision is expected rather than
+        // exceptional: keep the receivable and disambiguate the PayPal side.
+        let mut number = request.invoice_number.clone();
+        for attempt in 0..3 {
+            match self.create_invoice_once(request.clone(), &number).await {
+                Err(PayPalError::Api {
+                    detail_issue: Some(issue),
+                    ..
+                }) if issue == "DUPLICATE_INVOICE_NUMBER" && attempt < 2 => {
+                    // Random, not time-based: four invoices created in the same
+                    // millisecond must still get different numbers.
+                    let suffix = uuid::Uuid::new_v4().simple().to_string();
+                    number = format!("{}-{}", request.invoice_number, &suffix[..4]);
+                    warn!(
+                        original = %request.invoice_number,
+                        retry = %number,
+                        "PayPal already has this invoice number; retrying with a suffix"
+                    );
+                }
+                other => return other,
+            }
+        }
+        unreachable!("the loop returns on the third attempt")
     }
 
     async fn send_invoice(
@@ -264,6 +320,23 @@ impl PayPalApi for LivePayPal {
             "send_to_recipient": true,
             "subject": subject,
             "note": note,
+        });
+        self.call(
+            Method::POST,
+            &format!("/v2/invoicing/invoices/{paypal_invoice_id}/send"),
+            None,
+            Some(&body),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    async fn send_invoice_silently(&self, paypal_invoice_id: &str) -> PayPalResult<()> {
+        let body = json!({
+            "send_to_invoicer": false,
+            "send_to_recipient": false,
+            "subject": "Invoice",
+            "note": "Issued outside PayPal; payable from this link.",
         });
         self.call(
             Method::POST,

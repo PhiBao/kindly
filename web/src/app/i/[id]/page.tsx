@@ -289,7 +289,24 @@ export default function InvoiceDeskPage() {
               </>
             ) : (
               <>
-                <StatusLine label="PayPal invoice" value={invoice.paypal_invoice_id ?? "not created"} mono />
+                <StatusLine
+                  label="PayPal invoice"
+                  value={
+                    invoice.paypal_invoice_url ? (
+                      <a
+                        href={invoice.paypal_invoice_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline decoration-[var(--color-rule-2)] underline-offset-2 hover:decoration-[var(--color-ink)]"
+                      >
+                        {invoice.paypal_invoice_id}
+                      </a>
+                    ) : (
+                      (invoice.paypal_invoice_id ?? "not created")
+                    )
+                  }
+                  mono
+                />
                 <StatusLine label="PayPal status" value={invoice.paypal_status ?? "—"} mono />
               </>
             )}

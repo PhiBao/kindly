@@ -126,6 +126,11 @@ pub async fn push_invoice_to_paypal(
         allow_partial_payment: true,
     };
 
+    // The invoice is the source of truth and exists whether or not PayPal can
+    // mirror it. Persist first: a failed PayPal call must never leave a
+    // receivable that the rest of the product cannot find.
+    state.store.upsert_invoice(invoice, work_summary).await?;
+
     let created = match state.paypal.create_invoice(request).await {
         Ok(created) => created,
         Err(error) if is_invoicing_unavailable(&error) => {

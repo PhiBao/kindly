@@ -904,6 +904,16 @@ async fn invoice_detail(
             "days_overdue": invoice.days_overdue(today),
             "paypal_invoice_id": invoice.paypal_invoice_id,
             "paypal_status": invoice.paypal_status,
+            // The payer-facing page for the invoice object. Sandbox invoices
+            // live on the sandbox host; live ones on paypal.com.
+            "paypal_invoice_url": invoice.paypal_invoice_id.as_ref().map(|id| {
+                let host = if state.config.paypal_base_url.contains("sandbox") {
+                    "https://www.sandbox.paypal.com"
+                } else {
+                    "https://www.paypal.com"
+                };
+                format!("{host}/invoice/p/#{id}")
+            }),
             "memo": invoice.memo,
             "work_summary": state.store.invoice_work_summary(invoice.id).await?,
             "lines": invoice.lines.iter().map(|line| json!({

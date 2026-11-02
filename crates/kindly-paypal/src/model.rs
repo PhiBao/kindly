@@ -170,11 +170,21 @@ pub fn format_minor(minor: i64, currency: &str) -> String {
 
 impl PayPalInvoice {
     pub fn from_resource(resource: &Value) -> PayPalResult<Self> {
+        // Create returns 201 with an href and no id in the body; show returns
+        // a full resource with an id. Accept both.
         let id = resource
             .get("id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| PayPalError::Shape("invoice resource missing id".into()))?
-            .to_string();
+            .map(str::to_string)
+            .or_else(|| {
+                resource
+                    .get("href")
+                    .and_then(|v| v.as_str())
+                    .and_then(|href| href.trim_end_matches('/').rsplit('/').next())
+                    .filter(|tail| tail.starts_with("INV2-"))
+                    .map(str::to_string)
+            })
+            .ok_or_else(|| PayPalError::Shape("invoice resource missing id".into()))?;
         let status = resource
             .get("status")
             .and_then(|v| v.as_str())
@@ -292,9 +302,6 @@ impl PayPalInvoice {
                     "due_date": request.due_date.format("%Y-%m-%d").to_string(),
                 },
             },
-            "invoicer": {
-                "email_address": request.invoicer_email,
-            },
             "primary_recipients": [recipient],
             "items": items,
             "configuration": {
@@ -306,6 +313,13 @@ impl PayPalInvoice {
                 "tax_inclusive": false,
             },
         });
+        // Only name an invoicer when one is configured. Omitting it lets PayPal
+        // use the merchant that owns the credentials, which is always correct.
+        if !request.invoicer_email.trim().is_empty() {
+            body["invoicer"] = serde_json::json!({
+                "email_address": request.invoicer_email,
+            });
+        }
         if let Some(memo) = &request.memo {
             body["detail"]["memo"] = Value::String(memo.clone());
         }

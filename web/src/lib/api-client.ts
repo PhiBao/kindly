@@ -233,6 +233,7 @@ export interface Message {
 export interface InvoiceDetail {
   invoice: InvoiceSummary & {
     paypal_status: string | null;
+    paypal_invoice_url?: string | null;
     memo: string | null;
     lines: { description: string; quantity: string; unit_price: string; amount: string }[];
   };

@@ -206,18 +206,39 @@ pub async fn seed_demo(state: &AppState, reset: bool) -> ApiResult<SeedSummary> 
         (&kestrel_invoice, &kestrel_invoice_work, &kestrel),
     ] {
         let mut invoice = invoice.clone();
-        engine::push_invoice_to_paypal(state, &mut invoice, client, work.as_deref()).await?;
-        let subject = format!(
-            "Invoice {} from {}",
-            invoice.number, state.config.owner_business
-        );
-        engine::send_invoice_via_paypal(
-            state,
-            &mut invoice,
-            &subject,
-            "Thanks — the work is delivered and this is ready when you are.",
-        )
-        .await?;
+        // A demo must boot with PayPal unreachable, misconfigured, or annoyed.
+        // The invoice exists in Kindly either way; the portal can still take a
+        // Checkout payment, and the failure stays visible in the ledger.
+        if let Err(error) =
+            engine::push_invoice_to_paypal(state, &mut invoice, client, work.as_deref()).await
+        {
+            tracing::warn!(invoice = %invoice.number, %error, "seed: PayPal invoice not created");
+            ledger
+                .note(
+                    Actor::PayPal,
+                    LedgerKind::ActionFailed,
+                    format!(
+                        "Could not create the PayPal mirror for {}: {error}. The receivable still works through Checkout.",
+                        invoice.number
+                    ),
+                    Some(invoice.id),
+                )
+                .await?;
+        }
+        if let Some(paypal_id) = invoice.paypal_invoice_id.clone() {
+            // These invoices were issued before Kindly existed: make them
+            // payable without PayPal emailing a client who was billed weeks ago.
+            match state.paypal.send_invoice_silently(&paypal_id).await {
+                Ok(()) => {
+                    invoice.mark_sent(Utc::now());
+                    invoice.paypal_status = Some("SENT".to_string());
+                    state.store.upsert_invoice(&invoice, None).await?;
+                }
+                Err(error) => {
+                    tracing::warn!(invoice = %invoice.number, %error, "seed: PayPal send failed");
+                }
+            }
+        }
         ledger
             .note(
                 Actor::Owner,

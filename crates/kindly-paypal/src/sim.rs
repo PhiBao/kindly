@@ -190,6 +190,7 @@ impl SimPayPal {
                 status: 422,
                 issue: "INVALID_REQUEST".into(),
                 message: "payment amount must be positive".into(),
+                detail_issue: None,
             });
         }
         if amount_minor > invoice.outstanding() {
@@ -197,6 +198,7 @@ impl SimPayPal {
                 status: 422,
                 issue: "AMOUNT_EXCEEDS_OUTSTANDING".into(),
                 message: "payment exceeds the outstanding balance".into(),
+                detail_issue: None,
             });
         }
 
@@ -332,6 +334,7 @@ impl PayPalApi for SimPayPal {
                 status: 422,
                 issue: "INVALID_REQUEST".into(),
                 message: "an invoice needs at least one line".into(),
+                detail_issue: None,
             });
         }
         let total: i64 = request
@@ -370,6 +373,10 @@ impl PayPalApi for SimPayPal {
         PayPalInvoice::from_resource(&resource)
     }
 
+    async fn send_invoice_silently(&self, paypal_invoice_id: &str) -> PayPalResult<()> {
+        self.send_invoice(paypal_invoice_id, "Invoice", "").await
+    }
+
     async fn send_invoice(
         &self,
         paypal_invoice_id: &str,
@@ -385,6 +392,7 @@ impl PayPalApi for SimPayPal {
                 status: 422,
                 issue: "INVOICE_ALREADY_SENT".into(),
                 message: format!("invoice is {}", invoice.status.as_str()),
+                detail_issue: None,
             });
         }
         invoice.status = PayPalInvoiceStatus::Sent;
@@ -414,6 +422,7 @@ impl PayPalApi for SimPayPal {
                 status: 422,
                 issue: "REMINDER_LIMIT_EXCEEDED".into(),
                 message: "an invoice can only be reminded twice in a day".into(),
+                detail_issue: None,
             });
         }
         invoice.reminders.push(Utc::now());
@@ -438,6 +447,7 @@ impl PayPalApi for SimPayPal {
                 status: 422,
                 issue: "CURRENCY_MISMATCH".into(),
                 message: format!("invoice is {}", invoice.currency_code),
+                detail_issue: None,
             });
         }
         if amount_minor > invoice.outstanding() {
@@ -445,6 +455,7 @@ impl PayPalApi for SimPayPal {
                 status: 422,
                 issue: "AMOUNT_EXCEEDS_OUTSTANDING".into(),
                 message: "payment exceeds the outstanding balance".into(),
+                detail_issue: None,
             });
         }
         invoice.paid_minor += amount_minor;

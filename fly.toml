@@ -1,4 +1,4 @@
-# Kindly API on Fly.io — simulation mode with a small persistent volume.
+# Kindly API on Fly.io — a small persistent volume, scaled to zero when idle.
 #
 #   fly apps create kindly-desk-api
 #   fly volumes create kindly_data --region sin --size 1 --app kindly-desk-api
@@ -12,16 +12,20 @@ primary_region = "sin"
   dockerfile = "Dockerfile"
 
 [env]
-  KINDLY_PAYPAL_MODE = "sim"
+  # Live PayPal *sandbox* (test money). Credentials are Fly secrets, never here.
+  KINDLY_PAYPAL_MODE = "live"
+  # Ask for a real PayPal invoice; settle through Checkout when the app is not
+  # granted the Invoicing feature.
+  KINDLY_INVOICING = "auto"
   KINDLY_SEED = "1"
   KINDLY_SCHEDULER = "1"
   KINDLY_DATA_DIR = "/data"
   KINDLY_OWNER_NAME = "Maya Rodriguez"
   KINDLY_OWNER_BUSINESS = "Maya Rodriguez Studio"
-  KINDLY_INVOICER_EMAIL = "merchant@kindly.demo"
+  KINDLY_INVOICER_EMAIL = "sb-pm0gf53447938@business.example.com"
   # Portal links must open in the browser, so this is the WEB app's URL, not
   # this service's. Updated after the web deployment exists.
-  KINDLY_PUBLIC_URL = "https://kindly-desk.vercel.app"
+  KINDLY_PUBLIC_URL = "https://kindly-desk-web.vercel.app"
   RUST_LOG = "info,kindly_server=info"
 
 [[mounts]]
@@ -31,11 +35,12 @@ primary_region = "sin"
 [http_service]
   internal_port = 8787
   force_https = true
-  # One machine always on: a judge clicking the link must never meet a 502 from
-  # a cold start. (Idle cost is a couple of dollars a month.)
+  # Scale to zero. "suspend" freezes the VM instead of rebooting it, so a cold
+  # request resumes in well under a second and the demo keeps the state a judge
+  # left behind. A full stop (deploy, host maintenance) reseeds the demo.
   auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
   [http_service.concurrency]
     type = "requests"
@@ -45,7 +50,8 @@ primary_region = "sin"
 [[http_service.checks]]
   interval = "30s"
   timeout = "5s"
-  grace_period = "10s"
+  # Generous: a cold boot seeds the studio and probes PayPal before serving.
+  grace_period = "45s"
   method = "GET"
   path = "/api/health"
 
