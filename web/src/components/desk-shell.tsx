@@ -79,6 +79,9 @@ export function DeskShell({
           <Link className="btn" href="/analytics">
             The money view
           </Link>
+          <Link className="btn btn--ghost" href="/sim">
+            {mode === "live" ? "Simulation" : "Live desk"}
+          </Link>
           <Link className="btn btn--stamp" href="/new">
             Add invoice
           </Link>

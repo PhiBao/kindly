@@ -35,10 +35,13 @@ async function openPage(path) {
   const page = await context.newPage();
   page.on("console", (message) => {
     if (message.type() !== "error") return;
+    // Once the payer is on PayPal's checkout, its console is not ours.
+    if (!page.url().startsWith(BASE)) return;
     const text = message.text();
     // Network-level noise (the sandbox connection changes under us) is not an
     // app error; only fail on real JavaScript or server failures.
     if (/ERR_NETWORK_CHANGED|ERR_INTERNET_DISCONNECTED|net::ERR_/i.test(text)) return;
+    if (/requestStorageAccess/i.test(text)) return;
     note(`[${path}] console error: ${text.slice(0, 200)}`);
   });
   page.on("pageerror", (error) => note(`[${path}] page error: ${String(error).slice(0, 200)}`));
@@ -51,8 +54,13 @@ const api = async (path, init) => {
   return response.json();
 };
 
-// Ensure the demo data exists, then note the ids we need.
-await api("/api/demo/reset", { method: "POST" });
+// Live PayPal issues real (sandbox) invoice objects, so a verification run does
+// not wipe the demo state; it only reseeds when there is nothing to look at.
+const health = await api("/api/health");
+const live = health.paypal_mode === "live";
+if (!live) {
+  await api("/api/demo/reset", { method: "POST" });
+}
 const bootstrap = await api("/api/bootstrap");
 const acme = bootstrap.invoices.find((invoice) => invoice.number === "1042");
 const northwind = bootstrap.invoices.find((invoice) => invoice.number === "1039");
@@ -160,6 +168,17 @@ ok(`demo data ready (${bootstrap.invoices.length} invoices)`);
   }
 }
 
+// ── the mode switch ──────────────────────────────────────────────────────
+{
+  const { page, context } = await openPage("/sim");
+  await page.waitForSelector("text=Two ways to run this desk", { timeout: 30_000 });
+  const liveCard = await page.locator("text=4111 1111 1111 1111").count();
+  if (liveCard === 0) note("the simulation page is missing the test-card instructions");
+  else ok("the simulation page explains both modes and how to pay");
+  await page.screenshot({ path: `${SHOTS}/11-sim.png`, fullPage: true });
+  await context.close();
+}
+
 // ── the client portal, including a payment ───────────────────────────────
 {
   const detail = await api(`/api/invoices/${northwind.id}`);
@@ -176,11 +195,24 @@ ok(`demo data ready (${bootstrap.invoices.length} invoices)`);
 
   // …then pays the up-front part.
   await page.getByRole("button", { name: /Pay .* with PayPal/ }).click();
-  await page.waitForTimeout(3000);
-  const receipt = await page.locator("text=Receipts").count();
-  if (receipt === 0) note("payment went through but no receipt was shown");
-  else ok("payment captured and receipt rendered");
-  await page.screenshot({ path: `${SHOTS}/06-portal-paid.png`, fullPage: true });
+  if (live) {
+    // Live mode must hand the payer to PayPal. Capturing needs a human (or a
+    // test card); the live smoke test proves that path separately.
+    await page
+      .waitForURL(/sandbox\.paypal\.com/, { timeout: 60_000 })
+      .catch(() => {});
+    if (page.url().includes("paypal.com")) {
+      ok("the payer is handed to PayPal's hosted checkout");
+    } else {
+      note(`pay button did not reach PayPal (${page.url().slice(0, 80)})`);
+    }
+  } else {
+    await page.waitForTimeout(3000);
+    const receipt = await page.locator("text=Receipts").count();
+    if (receipt === 0) note("payment went through but no receipt was shown");
+    else ok("payment captured and receipt rendered");
+    await page.screenshot({ path: `${SHOTS}/06-portal-paid.png`, fullPage: true });
+  }
   await context.close();
 }
 

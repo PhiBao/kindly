@@ -1024,6 +1024,14 @@ pub async fn issue_plan_invoices(
     invoice_id: InvoiceId,
     terms: &Terms,
 ) -> ApiResult<()> {
+    // One plan per receivable. Approving a second negotiation for the same
+    // invoice must not create a parallel set of obligations (that would double
+    // what the client owes and what the desk counts).
+    if state.store.plan_exists_for(invoice_id).await? {
+        return Err(ApiError::Conflict(
+            "a payment plan is already in place for this invoice".into(),
+        ));
+    }
     let mut invoice = state.store.invoice(invoice_id).await?;
     let client = state.store.client(invoice.client_id).await?;
     let plan_id = PlanId::new();
