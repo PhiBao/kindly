@@ -127,6 +127,51 @@ impl LivePayPal {
         Ok(access_token)
     }
 
+    /// POST a body we built by hand. Webhook verification is byte-sensitive:
+    /// PayPal signs the exact delivery, so re-serialising the parsed event can
+    /// change the bytes it hashes.
+    async fn post_json_text(&self, path: &str, body: String) -> PayPalResult<Value> {
+        let token = self.access_token().await?;
+        let response = self
+            .http
+            .post(self.url(path))
+            .bearer_auth(&token)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| PayPalError::Transport(e.to_string()))?;
+        let status = response.status();
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| PayPalError::Transport(e.to_string()))?
+            .to_vec();
+        let value: Value = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+        };
+        if status.is_success() {
+            return Ok(value);
+        }
+        Err(PayPalError::Api {
+            status: status.as_u16(),
+            issue: value
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("VERIFICATION_FAILED")
+                .to_string(),
+            message: value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("webhook verification call failed")
+                .to_string(),
+            detail_issue: None,
+        })
+    }
+
     /// Create one PayPal invoice with an explicit number (the retry path
     /// changes it, so it is a parameter rather than read from the request).
     async fn create_invoice_once(
@@ -592,23 +637,22 @@ impl PayPalApi for LivePayPal {
             PayPalError::SignatureInvalid("missing transmission signature".into())
         })?;
 
-        let body = json!({
-            "transmission_id": transmission_id,
-            "transmission_time": transmission_time,
-            "cert_url": cert_url,
-            "auth_algo": auth_algo,
-            "transmission_sig": transmission_sig,
-            "webhook_id": webhook_id,
-            "webhook_event": event,
-        });
+        // Embed the delivery body verbatim: the signature covers these bytes.
+        let raw_event = std::str::from_utf8(raw_body)
+            .map_err(|e| PayPalError::Shape(format!("webhook body is not utf-8: {e}")))?;
+        let quoted = |value: &str| serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into());
+        let body = format!(
+            "{{\"transmission_id\":{},\"transmission_time\":{},\"cert_url\":{},\"auth_algo\":{},\"transmission_sig\":{},\"webhook_id\":{},\"webhook_event\":{raw_event}}}",
+            quoted(&transmission_id),
+            quoted(&transmission_time),
+            quoted(&cert_url),
+            quoted(&auth_algo),
+            quoted(&transmission_sig),
+            quoted(webhook_id),
+        );
 
-        let (_, response, _) = self
-            .call(
-                Method::POST,
-                "/v1/notifications/verify-webhook-signature",
-                None,
-                Some(&body),
-            )
+        let response = self
+            .post_json_text("/v1/notifications/verify-webhook-signature", body)
             .await?;
 
         let status = response
@@ -617,7 +661,8 @@ impl PayPalApi for LivePayPal {
             .unwrap_or("FAILURE");
         if status != "SUCCESS" {
             return Err(PayPalError::SignatureInvalid(format!(
-                "paypal reported verification_status={status}"
+                "paypal reported verification_status={status} ({})",
+                serde_json::to_string(&response).unwrap_or_default()
             )));
         }
 
