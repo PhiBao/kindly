@@ -10,8 +10,13 @@ exactly what got you paid.
 Built for the **PayPal AI Hackathon: Build what's next with PayPal and AI** (submissions
 close 12 November 2026).
 
-**[Live demo](https://kindly-desk-web.vercel.app)** · **[Source](https://github.com/PhiBao/kindly)** — the demo runs in
-PayPal simulation mode: the whole product works, no credentials are needed, and no real money can move.
+**[Live demo](https://kindly-desk-web.vercel.app)** · **[Simulation](https://kindly-desk-sim.vercel.app)** · **[Source](https://github.com/PhiBao/kindly)**
+
+The live demo runs against **PayPal's sandbox**: real invoice objects, real Checkout, real signed
+webhooks — test money, no bank. Pay with a test card (`4111 1111 1111 1111`, any future date, CVC
+`123`, any US billing address) or open the **[simulation](https://kindly-desk-sim.vercel.app)**,
+where the same product runs against an in-process PayPal and a payment takes one click. The
+[`/sim`](https://kindly-desk-web.vercel.app/sim) page explains both.
 
 <p align="center">
   <img src="docs/diagrams/decision-loop.svg" alt="The model proposes, the mandate disposes, every verdict is recorded" width="880">
@@ -160,7 +165,7 @@ solo operator telling another solo operator is the natural loop; the agency-tier
 | PayPal capability | Where Kindly uses it |
 | --- | --- |
 | **OAuth 2.0 client credentials** | token cache with expiry, retry-with-backoff on 429/5xx |
-| **Invoicing v2** | create draft invoice, send, reminder (respecting PayPal's two-a-day cap), record payment, cancel, show invoice, list invoices, QR code, templates, partial-payment configuration |
+| **Invoicing v2** | real invoice objects: create, send, silent send for imported receivables, reminder (respecting PayPal's two-a-day cap), record payment, cancel, show, list, QR code, templates, partial-payment configuration. If an app is not granted the Invoicing feature, Kindly falls back to a Checkout payment link and says so in the ledger (`KINDLY_INVOICING=auto`) |
 | **Invoicing webhooks** | `INVOICING.INVOICE.CREATED / SENT / PAID / UPDATED / CANCELLED`, verified and idempotent |
 | **Checkout Orders v2 + captures** | the client portal's "pay now" and "pay part" flows, with `custom_id` carrying the invoice so a capture can settle even if our response is lost |
 | **`PAYMENT.CAPTURE.COMPLETED` webhooks** | the authoritative record of money that moved |
@@ -168,9 +173,10 @@ solo operator telling another solo operator is the natural loop; the agency-tier
 | **Idempotency** | `PayPal-Request-Id` on every write; separate idempotency keys per action; duplicate deliveries are counted, not double-applied |
 | **Agentic surface** | the agent's tool layer mirrors PayPal's published agent tools (create/send invoice, remind, record payment), and the seller agent signs its mandate the way AP2 mandates are signed |
 
-There is also a **simulation mode** (the default) with an in-process PayPal that implements
-the same trait, signs the same webhook deliveries and enforces the same caps, so anybody can
-run Kindly end to end with zero credentials. Nothing in the product logic knows which one it
+There is also a **simulation mode** with an in-process PayPal that implements the same trait,
+signs the same webhook deliveries and enforces the same caps, so anybody can run Kindly end to
+end with zero credentials. The hosted [simulation](https://kindly-desk-sim.vercel.app) is that
+path, deployed; the main demo is the live one. Nothing in the product logic knows which one it
 is talking to — see the honesty table in [Verification](#verification).
 
 ### AI, used where judgment is the work
@@ -260,7 +266,7 @@ a better thing to put in front of money than a sentence.
 | **Potential impact** | A named user, a measured problem ($17.7K average owed; 42% of freelancers have missed personal bills), and a loop that settles rather than nudges |
 | **Innovation** | Agent-to-agent terms negotiation with signed mandates, a deterministic mandate gate, and honest causal attribution |
 | **Presentation** | A three-minute demo built around one memorable moment: two agents settle, and the client's finance lead approves the release |
-| **Evidence** | A calibration table for the judgment thresholds, an append-only ledger that records every refusal with its reason, a stated attribution formula, and **101 Rust tests + 39 end-to-end checks + 10 browser checks** |
+| **Evidence** | A calibration table for the judgment thresholds, an append-only ledger that records every refusal with its reason, a stated attribution formula, and **101 Rust tests + 39 end-to-end checks + 11 browser checks + a live verifier that reads invoices back from PayPal** |
 
 ---
 
@@ -360,45 +366,69 @@ cd web && pnpm install && pnpm build && pnpm start
 
 ### Talking to a real PayPal sandbox
 
-1. Create a sandbox app at <https://developer.paypal.com/dashboard> and a **business**
-   sandbox account (that account is your invoicer).
-2. Add a webhook pointing at `https://<your-host>/api/webhooks/paypal` subscribed to the
-   `INVOICING.INVOICE.*` and `PAYMENT.CAPTURE.*` events, and copy its webhook id.
-3. Copy `.env.example` to `.env`, fill in `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`,
-   `PAYPAL_WEBHOOK_ID`, `KINDLY_INVOICER_EMAIL`, set `KINDLY_PAYPAL_MODE=live`, and put your
-   **public** URL in `KINDLY_PUBLIC_URL` (PayPal delivers nothing to localhost — use a tunnel
-   such as `cloudflared` or `ngrok`).
-4. Verify the credentials: `cargo run -p kindly-server -- paypal-check`.
+1. Create a sandbox app at <https://developer.paypal.com/dashboard>. Under **Features**, grant
+   **Invoicing** if you want native PayPal invoice objects; without it Kindly settles through
+   Checkout and records why.
+2. Add a webhook pointing at `https://<your-host>/api/webhooks/paypal`, subscribed to
+   `INVOICING.INVOICE.*`, `CHECKOUT.ORDER.APPROVED` and `PAYMENT.CAPTURE.COMPLETED`, and copy
+   its webhook id.
+3. Copy `.env.example` to `.env`, fill `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`,
+   `PAYPAL_WEBHOOK_ID`, set `KINDLY_PAYPAL_MODE=live`, and put your **public web** URL in
+   `KINDLY_PUBLIC_URL` (PayPal delivers nothing to localhost — use a tunnel such as
+   `cloudflared` or `ngrok`).
+4. `KINDLY_INVOICER_EMAIL` is optional. Leave it empty and PayPal uses the account that owns
+   the credentials, which is always right; a made-up address makes PayPal refuse to send.
+5. Verify what the app can actually do: `cargo run -p kindly-server -- paypal-check`. It reports
+   invoicing, checkout and webhook verification separately instead of failing on the first.
 
-Two notes for live mode: the seeded demo clients use `.test` email addresses, so PayPal may
-create their invoices but refuse to deliver them (Kindly logs this and carries on — replace a
-client's email on the invoice desk to receive the real sandbox email); and PayPal delivers
-webhooks only to a publicly reachable URL, which is why `KINDLY_PUBLIC_URL` and a tunnel
-matter.
+Two things worth knowing. Seeded demo clients use `.test` addresses, so their invoices are
+created and marked sent **without emailing anyone** (`send_to_recipient=false`) — they were
+supposedly billed weeks ago, and a demo should not mail a stranger. And a reseeded demo reuses
+invoice numbers, which PayPal requires to be unique; Kindly retries the PayPal-side number with
+a short suffix and keeps the human number unchanged.
 
-Everything in the product works the same way; the badges in the header switch from
+Everything in the product works the same way; the badge in the header switches from
 *simulated PayPal* to *PayPal sandbox*.
 
-### Deployed demo (what the hosted instance runs)
+### Deployed demo (what the hosted instances run)
 
-Two services, both from this repository:
+Four services, all from this repository.
+
+| | live | simulation |
+| --- | --- | --- |
+| Web | <https://kindly-desk-web.vercel.app> | <https://kindly-desk-sim.vercel.app> |
+| API | <https://kindly-desk-api.fly.dev> | <https://kindly-desk-api-sim.fly.dev> |
+| PayPal | sandbox APIs (`api-m.sandbox.paypal.com`) | in-process simulator |
+| Payment | Checkout order → test card → capture → signed webhook | one click |
+
+Both APIs scale to **zero** (`min_machines_running = 0`). Fly suspends the VM rather than
+rebooting it, so a cold request resumes in about half a second and the desk keeps whatever state
+a judge left behind. A full stop reseeds only the simulation; the live instance has
+`KINDLY_DEMO_MODE=0` so a restart never wipes a judge's progress.
 
 ```bash
-# API on Fly (Rust container, 1 GB volume for SQLite)
+# live API
 fly apps create kindly-desk-api
 fly volumes create kindly_data --region sin --size 1 --app kindly-desk-api
-fly secrets set KINDLY_PORTAL_SECRET=... --app kindly-desk-api
-fly deploy --app kindly-desk-api                      # uses ./Dockerfile + fly.toml
+fly secrets set KINDLY_PORTAL_SECRET=... PAYPAL_CLIENT_ID=... PAYPAL_CLIENT_SECRET=... \
+  PAYPAL_WEBHOOK_ID=... --app kindly-desk-api
+fly deploy --app kindly-desk-api --ha=false
 
-# Web on Vercel (Next.js)
-cd web && vercel link --project kindly-desk-web
-printf 'https://kindly-desk-api.fly.dev' | vercel env add NEXT_PUBLIC_KINDLY_API production
-vercel --prod
+# simulation API
+fly apps create kindly-desk-api-sim
+fly volumes create kindly_sim_data --region sin --size 1 --app kindly-desk-api-sim
+fly secrets set KINDLY_PORTAL_SECRET=... --app kindly-desk-api-sim
+fly deploy --app kindly-desk-api-sim --config fly.sim.toml --ha=false
+
+# web (twice: once per API origin)
+cd web && vercel link --project kindly-desk-web && vercel --prod
+# the simulation project sets KINDLY_API_ORIGIN=https://kindly-desk-api-sim.fly.dev at build
 ```
 
-Set the API's `KINDLY_PUBLIC_URL` to the **web** URL: client portal links are opened in a
-browser, so they must point at the web app, not the API. `render.yaml` does the same thing
-on Render if you prefer one platform.
+Set each API's `KINDLY_PUBLIC_URL` to its **web** URL: client portal links open in a browser, so
+they must point at the web app, not the API. Locally the Next.js server proxies `/api/*` to the
+API; the hosted web service calls the API origin directly (`KINDLY_API_ORIGIN`), which also
+survives API restarts cleanly.
 
 ### An optional judgment layer (TypeSafe)
 
@@ -412,33 +442,43 @@ math and the ledger are identical either way.
 
 ```bash
 cargo test                                  # 101 tests: 98 unit + 3 integration over the real runtime
-python3 scripts/smoke-demo.py               # 39 end-to-end checks against a running server
+python3 scripts/smoke-demo.py               # 39 end-to-end checks, simulation mode
 cd web && pnpm typecheck                    # strict TypeScript
-cd web && node scripts/verify-ui.mjs        # 10 browser checks: every surface, add-invoice, counterparty, payment
+cd web && node scripts/verify-ui.mjs        # 11 browser checks: every surface, both modes, the payer hand-off
+
+# against the deployed pair (live PayPal)
 cd web && node scripts/verify-ui.mjs --base https://kindly-desk-web.vercel.app \
-                                     --api https://kindly-desk-api.fly.dev   # the deployed pair
+                                     --api https://kindly-desk-api.fly.dev
+
+# against PayPal itself, not our own mirror
+PAYPAL_CLIENT_ID=... PAYPAL_CLIENT_SECRET=... \
+  python3 scripts/verify-live.py --base https://kindly-desk-api.fly.dev
 ```
 
-The smoke test is the honest one: it drives the actual pipeline — negotiation, policy
-refusal, client approval, plan issue, portal payment, webhook, instalment settlement,
-attribution, the injection scenario, quiet hours and escalation — and prints a pass/fail line
-for each. It also asserts the accounting invariant (`total = collected + outstanding`) and
-that plan instalments do not inflate the outstanding total.
+The smoke test drives the actual pipeline — negotiation, policy refusal, client approval, plan
+issue, portal payment, webhook, instalment settlement, attribution, the injection scenario,
+quiet hours and escalation — and prints a pass/fail line for each. It also asserts the
+accounting invariant (`total = collected + outstanding`) and that plan instalments do not
+inflate the outstanding total.
+
+`verify-live.py` is the external check: it reads every mirrored invoice back from PayPal with
+the app's own credentials, confirms the recorded deliveries are signature-verified, and opens a
+Checkout order (never approved) to prove the payment surface works. A mirrored-but-fake id
+cannot pass it.
 
 ---
 
 ## Demo
 
 **Hosted demo:** <https://kindly-desk-web.vercel.app> (Next.js on Vercel, Rust API on Fly,
-SQLite on a Fly volume). It runs in PayPal simulation mode — there is no real money in it, and
-the footer of every screen says so. Locally the Next.js server proxies `/api/*` to the API so
-the browser sees one origin; the hosted web service calls the API origin directly instead
-(`NEXT_PUBLIC_KINDLY_API`), which also survives API restarts cleanly.
+SQLite on a Fly volume) against PayPal's **sandbox**. The header badge says *PayPal sandbox*;
+no real money can move. If you would rather not type card details, the
+[simulation](https://kindly-desk-sim.vercel.app) runs the same product with a one-click
+simulated PayPal.
 
-The hosted instance runs with `KINDLY_DEMO_MODE=1`: it reseeds on every boot, so the seeded
-invoices always carry dates relative to today (an 11-day-overdue invoice never ages into a
-60-day one), and `POST /api/demo/reset` returns it to that state at any time. The scenarios
-panel is the intended way to drive it.
+The live instance is seeded with four receivables and keeps its state across restarts; the
+panel plus `POST /api/demo/reset` returns it to the seeded story. The simulation reseeds on
+every boot so its dates are always relative to today.
 
 **Try this first (in this order).**
 
@@ -451,7 +491,9 @@ panel is the intended way to drive it.
    invoices and the room stamps **PLAN ISSUED**.
 4. Open the invoice desk, copy the **client link**, and open it in a new tab. You are now the
    client: read the letters, type *"could we do $575 now and the rest on the 20th?"*, and
-   watch the message get read and answered. Then pay part of it.
+   watch the message get read and answered. Press **Pay with PayPal** — on the live demo you
+   land on PayPal's own checkout; pay with the test card and you are returned to a settled
+   invoice (on the simulation it takes one click).
 5. Back on the desk, look at the agent's trail and the proof panel: the blocked action, the
    refusal, the attribution, and the webhook that closed the loop.
 6. Press **Scenarios → A client tries to instruct the agent** to see the defence.
@@ -466,9 +508,9 @@ panel is the intended way to drive it.
 
 | Claim | Reality |
 | --- | --- |
-| PayPal invoices, reminders, record-payment, orders, captures | **Real API calls** in `live` mode against the PayPal sandbox (`PAYPAL_API_BASE`); the request shapes, error handling, retry and idempotency keys are the production path |
-| Webhook handling | **Real**: signature verification through PayPal's own verify endpoint, idempotent by event id, raw deliveries stored |
-| Money movement | **Sandbox only in this build.** In the default simulation mode an in-process PayPal moves nothing at all |
+| PayPal invoices, reminders, record-payment, orders, captures | **Real API calls** in `live` mode against the PayPal sandbox (`PAYPAL_API_BASE`): the hosted demo has created invoice objects, opened Checkout orders, captured a test-card payment and received the `PAYMENT.CAPTURE.COMPLETED` delivery. The request shapes, error handling, retry and idempotency keys are the production path |
+| Webhook handling | **Real**: signature verification through PayPal's own verify endpoint against the exact delivered bytes, idempotent by event id, raw deliveries stored. Real deliveries are recorded `verified: true` in the demo |
+| Money movement | **Sandbox only.** The live demo takes real sandbox payments through PayPal Checkout (test card, no account); the simulation moves nothing at all. Neither touches a bank |
 | Agent-to-agent negotiation | **Real, both sides.** Two independently keyed agents (`ed25519-dalek`), signed envelopes, verified on receipt. In this build the buyer's AP agent runs inside Kindly's runtime, with its own mandate and cash policy — in production it would be the client's own AP system |
 | The buyer's *human* approval | **Simulated by you pressing the button** — it is the AP2 "human present" step, deliberately not automated |
 | Reply understanding, message composition, negotiation shape | **Real LLM calls** when a model is configured; deterministic heuristics and templates when it is not. Both paths are exercised by tests |
@@ -479,7 +521,9 @@ panel is the intended way to drive it.
 
 ```bash
 ./scripts/dev-server.sh --reset
-python3 scripts/smoke-demo.py            # 34 checks, all green
+python3 scripts/smoke-demo.py            # 39 checks, all green (simulation)
+PAYPAL_CLIENT_ID=... PAYPAL_CLIENT_SECRET=... \
+  python3 scripts/verify-live.py --base https://kindly-desk-api.fly.dev  # PayPal agrees
 cd web && node scripts/verify-ui.mjs     # every surface renders, flows walk
 ```
 
@@ -541,6 +585,8 @@ product.
 
 - Payments run against the **PayPal sandbox**; going live needs a production app review, not
   a code change.
+- Native PayPal invoices need the app's **Invoicing** feature. When an app lacks it, Kindly
+  settles through Checkout and records the reason instead of failing; the demo app has it.
 - The two-agent demo runs the client's AP agent inside Kindly's runtime (its own key, its own
   mandate — but the same process). A production deployment would exchange KATP envelopes over
   the wire with the client's real AP system.

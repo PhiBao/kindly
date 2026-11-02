@@ -39,10 +39,13 @@ blocks. Replace `‹placeholders›` before submitting.
 >   (`create_invoice`, `send_invoice`, `send_reminder`, `record_payment`), and the seller agent
 >   signs the mandate it acts under with Ed25519, in the spirit of AP2 mandates.
 >
-> All of it runs against the **PayPal sandbox** in `KINDLY_PAYPAL_MODE=live`; the default mode
-> is an in-process simulator that implements the same interface, signs the same webhook
-> deliveries and enforces the same caps, so the project can be run and judged with no
-> credentials at all.
+> All of it runs against the **PayPal sandbox** in `KINDLY_PAYPAL_MODE=live`, and the hosted
+> demo is on that path: it has created invoice objects, opened Checkout orders, captured a
+> test-card payment and received the `PAYMENT.CAPTURE.COMPLETED` delivery. Where an app is not
+> granted PayPal's Invoicing feature, Kindly settles through a Checkout payment link and records
+> why (`KINDLY_INVOICING=auto`). A second deployment runs an in-process simulator that
+> implements the same interface, signs the same webhook deliveries and enforces the same caps,
+> so the project can be judged with no credentials at all.
 >
 > **AI tools.** Kindly separates authority (what is allowed) from judgment (what does this
 > mean) and language (how it is said). Authority is code: a deterministic policy engine
@@ -99,22 +102,32 @@ blocks. Replace `‹placeholders›` before submitting.
 
 > **https://github.com/PhiBao/kindly** — MIT licensed, licence visible in the About section.
 > The README covers what it is, how to run it in simulation mode with no credentials, how to
-> point it at a PayPal sandbox, how to run the unit tests, the end-to-end smoke test and the
-> browser check, and an explicit table of what is real versus simulated.
+> point it at a PayPal sandbox (including the Invoicing feature and webhook setup), how to run
+> the unit tests, the simulation smoke test, the browser check, the live verifier, and an
+> explicit table of what is real versus simulated.
 
 ## Provide a URL to a working demo
 
-> **https://kindly-desk-web.vercel.app** — Next.js on Vercel, Rust API on Fly (SQLite on a
-> Fly volume), running in PayPal simulation mode with the TypeSafe judgment layer enabled. The
-> dashboard is open: this deployment moves no real money, and every screen says so. It is
-> verified end to end against the deployed pair (39 API checks + 10 browser checks), including
-> creating a client and invoice with no seeded data, changing the counterparty's policy, and
-> settling a payment.
+> **https://kindly-desk-web.vercel.app** — Next.js on Vercel, Rust API on Fly (SQLite on a Fly
+> volume), running against the **PayPal sandbox** with the TypeSafe judgment layer enabled. Real
+> API calls, test money: PayPal invoices, Checkout, captures and signature-verified webhooks.
+> The dashboard is open. Verified against the deployed pair (39 end-to-end checks in simulation,
+> 11 browser checks on the live pair, plus `scripts/verify-live.py`, which reads every mirrored
+> invoice back from PayPal itself).
+>
+> A **simulation** deployment runs the same product with a one-click in-process PayPal:
+> **https://kindly-desk-sim.vercel.app** (explained at `/sim` on the main demo).
 
 ## Testing instructions or credentials
 
-> Nothing is required to start: the hosted demo is open, and the repository runs with
+> Nothing is required to start: the hosted demo is open. The repository also runs with
 > `./scripts/dev-server.sh` (no PayPal account, no API key).
+>
+> **Paying on the live demo.** Press *Pay with PayPal*, choose **Pay with debit or credit card**
+> at PayPal, then **Pay now as guest**. Use card `4111 1111 1111 1111`, any future expiry, CVC
+> `123`, any US billing address. You are returned to the invoice, which settles from the capture
+> and the signed webhook. No PayPal account is needed. If you would rather not enter a card,
+> use the **simulation** deployment, where payment is one click.
 >
 > **The fastest path to the interesting part (90 seconds):**
 >
@@ -128,14 +141,19 @@ blocks. Replace `‹placeholders›` before submitting.
 > 4. Back on the desk, read the agent's trail and the proof panel; press **Scenarios → A client
 >    tries to instruct the agent** to see the defence.
 >
-> For a full verification run: `python3 scripts/smoke-demo.py` (39 checks) and
-> `cd web && node scripts/verify-ui.mjs`. Against the deployed instance:
+> For a full verification run, in simulation: `python3 scripts/smoke-demo.py` (39 checks) and
+> `cd web && node scripts/verify-ui.mjs`. Against the deployed live pair:
 >
 > ```bash
-> python3 scripts/smoke-demo.py --base https://kindly-desk-api.fly.dev
 > cd web && node scripts/verify-ui.mjs --base https://kindly-desk-web.vercel.app \
 >                                      --api https://kindly-desk-api.fly.dev
+> PAYPAL_CLIENT_ID=… PAYPAL_CLIENT_SECRET=… \
+>   python3 scripts/verify-live.py --base https://kindly-desk-api.fly.dev
 > ```
+>
+> `verify-live.py` is the external check: it reads each mirrored invoice back from PayPal with
+> the app's own credentials, confirms every recorded delivery was signature-verified, and opens
+> a Checkout order (never approved) to prove the payment surface works.
 
 ---
 
@@ -148,7 +166,12 @@ blocks. Replace `‹placeholders›` before submitting.
 > The Invoicing v2 API was the right primitive for this product — invoices, reminders,
 > partial payments and webhooks are exactly what a collections agent needs, and the sandbox is
 > faithful enough that we could build against it confidently. Documentation quality is high.
-> Things that cost us time: (1) webhook verification requires a publicly reachable URL, which
+> Things that cost us time: (0) the Invoicing **feature** is a separate grant from valid
+> credentials — with correct keys, OAuth, Checkout and webhooks all worked while
+> `POST /v2/invoicing/invoices` returned `403 NOT_AUTHORIZED`. The token's scope list is the
+> only clue, and the error does not name the missing feature; a `WWW-Authenticate`-style hint or
+> a "this app lacks Invoicing" message would have saved a day; (1) webhook verification requires
+> a publicly reachable URL, which
 > makes local development awkward — a sandbox-only "accept signed test deliveries" path or a
 > first-class CLI tunnelling story would help a lot; (2) growing a partial payment into a
 > settled invoice needs several round trips (show invoice → record payment → reconcile), where

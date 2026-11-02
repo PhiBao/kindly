@@ -5,17 +5,22 @@ claim visible on screen.
 
 **Before you record**
 
+Record the **live demo** (<https://kindly-desk-web.vercel.app>), because the payment beat is
+stronger when the payer lands on PayPal's own checkout. Reset it to the opening state:
+
 ```bash
-./scripts/dev-server.sh --reset          # fresh demo studio, simulation mode
-cd web && pnpm build && pnpm start       # http://localhost:3000
-python3 scripts/smoke-demo.py            # confirm all 34 checks pass
+curl -X POST https://kindly-desk-api.fly.dev/api/demo/reset
+curl -X POST https://kindly-desk-api.fly.dev/api/demo/scenario/agent_to_agent
 ```
 
-Have two browser windows ready: the desk at `localhost:3000`, and a second window for the
-client portal (you will copy the link from the invoice desk). Record at 1440×900, browser
-zoom 110%, no bookmarks bar. Rehearse the agent-to-agent scenario once so the transcript is
-in your head — but always reset before a take, so the recording starts from the same state a
-judge will see.
+Have two browser windows ready: the desk, and a second window for the client portal (you will
+copy the link from the invoice desk). Record at 1440×900, browser zoom 110%, no bookmarks bar.
+Have the test card ready to paste: `4111 1111 1111 1111`, expiry `01/30`, CVC `123`, any US
+billing address.
+
+If PayPal's sandbox is slow on the day, record the same script against the simulation
+(<https://kindly-desk-sim.vercel.app>) and say so on screen — the product is identical, and the
+payment is one click.
 
 ---
 
@@ -88,10 +93,14 @@ Type into the box: *"could we do $575 now and the rest on the 20th?"* — press 
 > "Kindly reads that as a plan request, answers in your voice, and — notice — the terms are
 > clamped to your floor: $805 now, the rest in two instalments."
 
-Press **Pay with PayPal**, then the **Pay part** button. The PAID stamp lands.
+Press **Pay with PayPal**. The payer lands on PayPal's own checkout — choose **Pay with debit
+or credit card**, **Pay now as guest**, paste the test card. Cut the typing in the edit; keep
+the moment the page returns.
 
-> "The payment runs through PayPal, the webhook comes back verified, and the ledger closes
-> the loop."
+The invoice is **SETTLED**, with a receipt and a `PAYMENT.CAPTURE.COMPLETED` delivery behind it.
+
+> "The payment runs through PayPal's real checkout, the webhook comes back signature-verified,
+> and the ledger closes the loop. Test money — but the same code path a live merchant runs."
 
 ## 2:45 — 3:00 · The payoff
 
@@ -117,8 +126,9 @@ End card: **Kindly — the asking, handled** · demo URL · GitHub URL.
 
 ## Reliability notes for the recording
 
-- **Reset before every take** (`Scenarios` → the reset happens automatically when the server
-  is started with `--reset`; otherwise use the reset button in the scenarios panel).
+- **Reset before every take** (`POST /api/demo/reset`, or the reset in the scenarios panel).
+  The live demo does not reseed on restart, so a take cannot wipe a judge's session — which
+  also means you must reset deliberately.
 - The agent-to-agent scenario is deterministic: their agent's policy is fixed, so the
   transcript will read the same way every time.
 - If you record with a language model configured, drafts will differ in wording between
