@@ -212,7 +212,11 @@ pub async fn process_event(state: &AppState, event: &VerifiedEvent) -> ApiResult
                     state.store.invoice_by_paypal_id(&paypal_invoice_id).await?
                 {
                     if let Some(status) = event.resource.get("status").and_then(|v| v.as_str()) {
-                        invoice.paypal_status = Some(status.to_string());
+                        // Never let a delivery downgrade a known status to
+                        // UNKNOWN; some event resources omit the real state.
+                        if status != "UNKNOWN" {
+                            invoice.paypal_status = Some(status.to_string());
+                        }
                         if status == "SENT" && invoice.issued_at.is_none() {
                             invoice.mark_sent(Utc::now());
                         }

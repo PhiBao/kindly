@@ -903,7 +903,12 @@ async fn invoice_detail(
             "paid_at": invoice.paid_at,
             "days_overdue": invoice.days_overdue(today),
             "paypal_invoice_id": invoice.paypal_invoice_id,
-            "paypal_status": invoice.paypal_status,
+            // A sent invoice (issued_at set) with an id is SENT even if an old
+            // write raced and left the parsed status as UNKNOWN.
+            "paypal_status": match invoice.paypal_status.as_deref() {
+                Some("UNKNOWN") if invoice.issued_at.is_some() => Some("SENT".to_string()),
+                other => other.map(str::to_string),
+            },
             // The payer-facing page for the invoice object. Sandbox invoices
             // live on the sandbox host; live ones on paypal.com.
             "paypal_invoice_url": invoice.paypal_invoice_id.as_ref().map(|id| {
