@@ -55,7 +55,7 @@ export function ReceivablesLedger({ invoices }: { invoices: InvoiceSummary[] }) 
       </div>
 
       <ul>
-        {invoices.map((invoice) => (
+        {open.map((invoice) => (
           <li key={invoice.id} className="ledger-row rule-b">
             <Link
               href={`/i/${invoice.id}`}

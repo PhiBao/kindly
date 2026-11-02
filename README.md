@@ -500,7 +500,7 @@ visit — so it no longer does.
    refusal, the attribution, and the webhook that closed the loop.
 6. Press **Scenarios → A client tries to instruct the agent** to see the defence.
 
-**The video.** `docs/kindly-demo.mp4` is 2:16, recorded against the live sandbox: the
+**The video.** `docs/kindly-demo.mp4` is 2:49, recorded against the live sandbox: the
 negotiation, the real PayPal invoices it issues, a client message being read, and a settled
 invoice with its verified capture. The script and the card templates are in `docs/video/`, so
 the take is reproducible with [open-video-demo](https://github.com/PhiBao/open-video-demo).

@@ -3,7 +3,7 @@
   "segments": [
     {
       "id": "s1_title",
-      "text": "Freelancers do not lose money because they invoice badly. They lose it because chasing a client is unbearable. Kindly is an agent that does the asking \u2014 and closes.",
+      "text": "If you've ever freelanced, you know the worst part of an overdue invoice. It's the asking. You have to go back to someone you like and ask for money you already earned. Kindly does that part. It chases the client, negotiates the terms, and takes the payment through PayPal.",
       "scene": {
         "kind": "card",
         "template": "title-left"
@@ -11,7 +11,7 @@
     },
     {
       "id": "s2_desk",
-      "text": "This is a working studio's book. Eight thousand three hundred fifty dollars outstanding. Three invoices past due. Nine hundred already collected through PayPal. The mandate is the product: two contacts a week, never below seventy percent up front, no discount without asking, three instalments inside forty-five days.",
+      "text": "Here's a studio's actual book. Eleven thousand five hundred fifty dollars still out. Three invoices past due. Nine hundred that already came in through PayPal. Before Kindly does anything, it has to work inside these limits. Two contacts a week. Never under seventy percent up front. No discounts without asking. Three instalments at most, inside forty-five days. You write them once. The agent can't go around them.",
       "scene": {
         "kind": "page",
         "src": "https://kindly-desk-web.vercel.app/",
@@ -24,43 +24,44 @@
           {
             "action": "move",
             "x": 0.5,
-            "y": 0.28,
-            "dur": 0.6
+            "y": 0.24,
+            "dur": 0.7
           },
           {
             "action": "scrollTo",
-            "sel": "text=Your mandate",
-            "dur": 1.2,
-            "after": 1.6
+            "y": 0.0,
+            "dur": 0.8,
+            "after": 9.0
           },
           {
             "action": "move",
-            "x": 0.79,
-            "y": 0.55,
-            "dur": 0.7,
-            "after": 0.5
+            "x": 0.8,
+            "y": 0.52,
+            "dur": 1.6,
+            "after": 8.0
           },
           {
             "action": "scrollTo",
-            "sel": "text=Receivables",
-            "dur": 1.2,
-            "after": 1.6
+            "y": 0.0,
+            "dur": 0.6,
+            "after": 8.0
           },
           {
-            "action": "scrollTo",
-            "sel": "text=Needs your decision",
-            "dur": 1.1,
-            "after": 1.4
+            "action": "move",
+            "x": 0.74,
+            "y": 0.4,
+            "dur": 1.6,
+            "after": 4.0
           }
         ]
       }
     },
     {
       "id": "s3_negotiation",
-      "text": "Acme's accounts-payable agent can release twelve hundred dollars without a human. Kindly wants sixteen eighty up front. Their counter breaks the seventy percent floor, so the policy engine refuses it automatically \u2014 no model involved \u2014 and Kindly holds. Their agent escalates to its finance lead. Both sides stop where a human should stop. Every envelope is signed and verified.",
+      "text": "Acme's accounts-payable agent can release twelve hundred dollars without waking anyone up. Kindly asks for sixteen eighty up front. That counter breaks your seventy percent floor, so the policy engine turns it down. No model gets a vote. Kindly holds, their agent goes to its finance lead, and both sides wait for a person. Every message here is signed, and the signatures check out.",
       "scene": {
         "kind": "page",
-        "src": "https://kindly-desk-web.vercel.app/n/01a19ba6-1181-70b2-ace5-9f5f7ed1ef68",
+        "src": "https://kindly-desk-web.vercel.app/n/01a19bbf-2f56-7632-8e2d-ef89bb250d3f",
         "zoom": 1.15,
         "wait_for": [
           "text=Negotiation room"
@@ -71,36 +72,48 @@
             "action": "scrollTo",
             "sel": "text=Their approval",
             "dur": 0.8,
-            "after": 1.4
+            "after": 2.0
           },
           {
             "action": "scrollTo",
             "sel": "has=Refused their counter automatically",
             "dur": 1.6,
-            "after": 2.2
+            "after": 2.8
           },
           {
             "action": "move",
             "x": 0.5,
             "y": 0.45,
-            "dur": 0.7,
-            "after": 0.5
+            "dur": 0.8,
+            "after": 0.8
           },
           {
             "action": "scrollTo",
             "sel": "text=Their finance lead approves",
             "dur": 1.1,
-            "after": 1.8
+            "after": 2.2
+          },
+          {
+            "action": "scrollTo",
+            "sel": "has=Refused their counter automatically",
+            "dur": 1.3,
+            "after": 2.2
+          },
+          {
+            "action": "scrollTo",
+            "sel": "text=Their approval",
+            "dur": 1.0,
+            "after": 1.6
           }
         ]
       }
     },
     {
       "id": "s4_approve",
-      "text": "Their finance lead approves. Kindly issues the deferred seven hundred twenty dollars as two dated PayPal invoices, each with its own payer link.",
+      "text": "Their finance lead says yes. Kindly splits the remaining seven hundred twenty dollars into two dated PayPal invoices. Each one gets its own payment link.",
       "scene": {
         "kind": "page",
-        "src": "https://kindly-desk-web.vercel.app/n/01a19ba6-1181-70b2-ace5-9f5f7ed1ef68",
+        "src": "https://kindly-desk-web.vercel.app/n/01a19bbf-2f56-7632-8e2d-ef89bb250d3f",
         "zoom": 1.15,
         "wait_for": [
           "text=Their finance lead approves"
@@ -120,16 +133,23 @@
             "sel": "text=Plan issued",
             "dur": 1.0,
             "after": 1.6
+          },
+          {
+            "action": "move",
+            "x": 0.5,
+            "y": 0.6,
+            "dur": 1.2,
+            "after": 1.2
           }
         ]
       }
     },
     {
       "id": "s5_invoice",
-      "text": "The parent invoice stays the receivable. Instalments are dated obligations under it, not new debt \u2014 the books do not double count. And every one is a real PayPal invoice.",
+      "text": "The original invoice is still what the client owes. The instalments sit underneath it, so the same money never gets counted twice. They exist in PayPal as real invoices, with their own payer links.",
       "scene": {
         "kind": "page",
-        "src": "https://kindly-desk-web.vercel.app/i/01a19ba5-e8e4-7101-9c75-05ae94ade0ef",
+        "src": "https://kindly-desk-web.vercel.app/i/01a19bbf-06a4-76c3-aee4-b264af5bdf09",
         "zoom": 1.15,
         "wait_for": [
           "text=Invoice 1042"
@@ -140,33 +160,33 @@
             "action": "scrollTo",
             "sel": "text=Payment plan",
             "dur": 1.2,
-            "after": 1.8
+            "after": 2.0
           },
           {
             "action": "move",
             "x": 0.28,
             "y": 0.55,
             "dur": 0.7,
-            "after": 0.6
+            "after": 0.8
           },
           {
             "action": "scrollTo",
             "sel": "text=PayPal invoice",
             "dur": 1.1,
-            "after": 1.6
+            "after": 1.8
           }
         ]
       }
     },
     {
       "id": "s6_portal",
-      "text": "The client gets one signed link, and no account. They can ask for different terms in their own words. Kindly reads the intent, checks it against the mandate, and answers in the studio's voice.",
+      "text": "The client gets one link. No account, no login. If they want different terms, they type it in their own words. Kindly works out what they're asking, checks it against your limits, and writes back in your voice.",
       "scene": {
         "kind": "page",
-        "src": "https://kindly-desk-web.vercel.app/c/01a19bb9-895b-74f2-be39-f9607d3a8333.1797501992._suFNOCCDAenC0XyHNJGcnO6HsU_PZnKX1LNrXD9gQc",
+        "src": "https://kindly-desk-web.vercel.app/c/01a19bca-e6cc-770b-bb95-e03ad50962ec.1797503132.lgm9y32dcPqgp1vzJ6HgQMMj2p4YpXQGJn0J5PVqS7Q",
         "zoom": 1.15,
         "wait_for": [
-          "text=Invoice 1042"
+          "text=Invoice 1064"
         ],
         "settle": 1.4,
         "actions": [
@@ -194,17 +214,17 @@
             "action": "scrollTo",
             "sel": "has=read that as",
             "dur": 0.7,
-            "after": 1.6
+            "after": 2.0
           }
         ]
       }
     },
     {
       "id": "s7_settled",
-      "text": "When the money lands, the capture comes back as a signed webhook, and the invoice closes itself.",
+      "text": "When the payment lands, PayPal sends a signed webhook. The invoice closes, and the receipt is already there.",
       "scene": {
         "kind": "page",
-        "src": "https://kindly-desk-web.vercel.app/c/01a19ba5-e8e4-7101-9c75-05b424021176.1797500721.5sCb0Kiflc3Ko0ye6xswa23P82sMBkFd2Sf1ZB6SRS4",
+        "src": "https://kindly-desk-web.vercel.app/c/01a19bbf-06a4-76c3-aee4-b26a2dd762b5.1797503051.PLaZTXDy8ydJUoK3-Qz3FDPRlssmxlm2dVPOer241y8",
         "zoom": 1.15,
         "wait_for": [
           "text=Invoice 1051"
@@ -216,20 +236,20 @@
             "x": 0.28,
             "y": 0.3,
             "dur": 0.7,
-            "after": 0.5
+            "after": 0.8
           },
           {
             "action": "scrollTo",
             "sel": "text=Receipts",
             "dur": 0.8,
-            "after": 1.6
+            "after": 2.0
           }
         ]
       }
     },
     {
       "id": "s8_proof",
-      "text": "The ledger records what actually caused it. Here: paid on their own, ten days early \u2014 and Kindly takes no credit. The same ledger holds the refusal, with the rule it broke. That is the difference between an agent you can audit, and one you have to trust.",
+      "text": "Then there's the part I care about most. Kindly tells you what actually caused the payment. This one, the client paid on their own, ten days ahead of their usual, and Kindly says so. It doesn't take the credit. The same ledger keeps the refusal, with the rule it broke, so you can check the agent's work instead of trusting it.",
       "scene": {
         "kind": "page",
         "src": "https://kindly-desk-web.vercel.app/",
@@ -243,26 +263,32 @@
             "action": "scrollTo",
             "sel": "text=What got you paid",
             "dur": 1.2,
-            "after": 2.0
+            "after": 3.0
           },
           {
             "action": "scrollTo",
             "sel": "text=PayPal deliveries",
             "dur": 1.0,
-            "after": 1.8
+            "after": 3.0
           },
           {
             "action": "scrollTo",
             "sel": "has=broke your mandate",
             "dur": 1.3,
-            "after": 1.8
+            "after": 2.6
+          },
+          {
+            "action": "scrollTo",
+            "sel": "text=What got you paid",
+            "dur": 1.4,
+            "after": 2.0
           }
         ]
       }
     },
     {
       "id": "s9_close",
-      "text": "Delegate the ask, not just the reminder. Kindly chases, negotiates and settles through PayPal \u2014 and shows you exactly why.",
+      "text": "Kindly does the asking, the negotiating and the settling. The money moves through PayPal. And it shows you why each invoice got paid.",
       "scene": {
         "kind": "card",
         "template": "close-left"

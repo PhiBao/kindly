@@ -1,125 +1,179 @@
 1
-00:00:00,100 --> 00:00:04,246
-Freelancers do not lose money because they invoice badly.
+00:00:00,100 --> 00:00:04,694
+If you've ever freelanced, you know the worst part of an overdue
+invoice.
 
 2
-00:00:04,197 --> 00:00:07,972
-They lose it because chasing a client is unbearable.
+00:00:04,644 --> 00:00:06,591
+It's the asking.
 
 3
-00:00:07,972 --> 00:00:11,788
-Kindly is an agent that does the asking — and closes.
+00:00:06,591 --> 00:00:11,118
+You have to go back to someone you like and ask for money you already
+earned.
 
 4
-00:00:12,410 --> 00:00:15,307
-This is a working studio's book.
+00:00:11,118 --> 00:00:13,420
+Kindly does that part.
 
 5
-00:00:15,257 --> 00:00:19,073
-Eight thousand three hundred fifty dollars outstanding.
+00:00:13,420 --> 00:00:18,801
+It chases the client, negotiates the terms, and takes the payment
+through PayPal.
 
 6
-00:00:19,073 --> 00:00:21,691
-Three invoices past due.
+00:00:19,410 --> 00:00:22,214
+Here's a studio's actual book.
 
 7
-00:00:21,691 --> 00:00:25,164
-Nine hundred already collected through PayPal.
+00:00:22,164 --> 00:00:26,045
+Eleven thousand five hundred fifty dollars still out.
 
 8
-00:00:25,164 --> 00:00:34,795
-The mandate is the product: two contacts a week, never below seventy
-percent up front, no discount without asking, three instalments inside
+00:00:26,045 --> 00:00:28,664
+Three invoices past due.
 
 9
-00:00:35,399 --> 00:00:40,506
-Acme's accounts-payable agent can release twelve hundred dollars
-without a human.
+00:00:28,664 --> 00:00:32,177
+Nine hundred that already came in through PayPal.
 
 10
-00:00:40,456 --> 00:00:43,536
-Kindly wants sixteen eighty up front.
+00:00:32,177 --> 00:00:36,664
+Before Kindly does anything, it has to work inside these limits.
 
 11
-00:00:43,536 --> 00:00:51,655
-Their counter breaks the seventy percent floor, so the policy engine
-refuses it automatically — no model involved — and Kindly holds.
+00:00:36,664 --> 00:00:38,953
+Two contacts a week.
 
 12
-00:00:51,655 --> 00:00:54,956
-Their agent escalates to its finance lead.
+00:00:38,953 --> 00:00:42,164
+Never under seventy percent up front.
 
 13
-00:00:54,956 --> 00:00:58,272
-Both sides stop where a human should stop.
+00:00:42,164 --> 00:00:44,795
+No discounts without asking.
 
 14
-00:00:58,272 --> 00:01:01,456
-Every envelope is signed and verified.
+00:00:44,795 --> 00:00:48,875
+Three instalments at most, inside forty-five days.
 
 15
-00:01:02,079 --> 00:01:04,647
-Their finance lead approves.
+00:00:48,875 --> 00:00:50,953
+You write them once.
 
 16
-00:01:04,597 --> 00:01:11,703
-Kindly issues the deferred seven hundred twenty dollars as two dated
-PayPal invoices, each with its own payer link.
+00:00:50,953 --> 00:00:53,638
+The agent can't go around them.
 
 17
-00:01:15,349 --> 00:01:18,549
-The parent invoice stays the receivable.
+00:00:54,820 --> 00:01:00,441
+Acme's accounts-payable agent can release twelve hundred dollars
+without waking anyone up.
 
 18
-00:01:18,500 --> 00:01:24,263
-Instalments are dated obligations under it, not new debt — the books
-do not double count.
+00:01:00,390 --> 00:01:03,745
+Kindly asks for sixteen eighty up front.
 
 19
-00:01:24,263 --> 00:01:27,525
-And every one is a real PayPal invoice.
+00:01:03,745 --> 00:01:09,364
+That counter breaks your seventy percent floor, so the policy engine
+turns it down.
 
 20
-00:01:28,139 --> 00:01:31,760
-The client gets one signed link, and no account.
+00:01:09,364 --> 00:01:11,811
+No model gets a vote.
 
 21
-00:01:31,710 --> 00:01:35,183
-They can ask for different terms in their own words.
+00:01:11,811 --> 00:01:17,442
+Kindly holds, their agent goes to its finance lead, and both sides
+wait for a person.
 
 22
-00:01:35,183 --> 00:01:40,973
-Kindly reads the intent, checks it against the mandate, and answers in
-the studio's voice.
+00:01:17,442 --> 00:01:21,534
+Every message here is signed, and the signatures check out.
 
 23
-00:01:41,599 --> 00:01:47,813
-When the money lands, the capture comes back as a signed webhook, and
-the invoice closes itself.
+00:01:22,149 --> 00:01:24,862
+Their finance lead says yes.
 
 24
-00:01:48,390 --> 00:01:51,682
-The ledger records what actually caused it.
+00:01:24,813 --> 00:01:30,641
+Kindly splits the remaining seven hundred twenty dollars into two
+dated PayPal invoices.
 
 25
-00:01:51,632 --> 00:01:56,487
-Here: paid on their own, ten days early — and Kindly takes no credit.
+00:01:30,641 --> 00:01:33,588
+Each one gets its own payment link.
 
 26
-00:01:56,487 --> 00:02:00,632
-The same ledger holds the refusal, with the rule it broke.
+00:01:38,289 --> 00:01:41,989
+The original invoice is still what the client owes.
 
 27
-00:02:00,632 --> 00:02:05,645
-That is the difference between an agent you can audit, and one you
-have to trust.
+00:01:41,939 --> 00:01:47,057
+The instalments sit underneath it, so the same money never gets
+counted twice.
 
 28
-00:02:06,260 --> 00:02:09,710
-Delegate the ask, not just the reminder.
+00:01:47,057 --> 00:01:51,741
+They exist in PayPal as real invoices, with their own payer links.
 
 29
-00:02:09,660 --> 00:02:15,237
-Kindly chases, negotiates and settles through PayPal — and shows you
-exactly why.
+00:01:52,349 --> 00:01:54,813
+The client gets one link.
+
+30
+00:01:54,763 --> 00:01:57,367
+No account, no login.
+
+31
+00:01:57,367 --> 00:02:01,381
+If they want different terms, they type it in their own words.
+
+32
+00:02:01,381 --> 00:02:07,025
+Kindly works out what they're asking, checks it against your limits,
+and writes back in your voice.
+
+33
+00:02:07,629 --> 00:02:11,736
+When the payment lands, PayPal sends a signed webhook.
+
+34
+00:02:11,687 --> 00:02:15,581
+The invoice closes, and the receipt is already there.
+
+35
+00:02:16,189 --> 00:02:19,429
+Then there's the part I care about most.
+
+36
+00:02:19,378 --> 00:02:22,878
+Kindly tells you what actually caused the payment.
+
+37
+00:02:22,878 --> 00:02:28,813
+This one, the client paid on their own, ten days ahead of their usual,
+and Kindly says so.
+
+38
+00:02:28,813 --> 00:02:31,234
+It doesn't take the credit.
+
+39
+00:02:31,234 --> 00:02:38,024
+The same ledger keeps the refusal, with the rule it broke, so you can
+check the agent's work instead of trusting it.
+
+40
+00:02:38,650 --> 00:02:42,771
+Kindly does the asking, the negotiating and the settling.
+
+41
+00:02:42,721 --> 00:02:45,352
+The money moves through PayPal.
+
+42
+00:02:45,352 --> 00:02:48,523
+And it shows you why each invoice got paid.
 

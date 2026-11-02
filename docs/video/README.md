@@ -1,6 +1,6 @@
 # The demo video — source
 
-`docs/kindly-demo.mp4` is a 2:16, 1080p30, narrated and subtitled product demo. It was rendered
+`docs/kindly-demo.mp4` is a 2:49, 1080p30, narrated and subtitled product demo. It was rendered
 with [open-video-demo](https://github.com/PhiBao/open-video-demo), which records real Playwright
 sessions against the deployed app and assembles them with edge-tts narration and ffmpeg.
 
@@ -31,7 +31,7 @@ the settled invoice and the verified PayPal deliveries. Nothing is re-enacted in
 
 ## Notes on the take
 
-- The book in the video has **$8,350 outstanding and $900 collected**: invoice 1051 was paid
+- The book in the video has **$11,550 outstanding and $900 collected**: invoice 1051 was paid
   through PayPal's sandbox with a test card before recording, so the capture and its
   `PAYMENT.CAPTURE.COMPLETED` delivery are real.
 - Invoice 1042's negotiation is genuine: the offer, the counter, the policy refusal and the

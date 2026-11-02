@@ -108,7 +108,7 @@ blocks. Replace `‹placeholders›` before submitting.
 
 ## Provide a URL to a demo video
 
-> **https://github.com/PhiBao/kindly/raw/main/docs/kindly-demo.mp4** — 2:16, 1080p, narrated and
+> **https://github.com/PhiBao/kindly/raw/main/docs/kindly-demo.mp4** — 2:49, 1080p, narrated and
 > subtitled. (Upload this file to YouTube and paste that URL instead if the form requires a
 > video platform; the file on GitHub is the same cut.)
 >
