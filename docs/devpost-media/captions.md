@@ -1,5 +1,9 @@
 # Devpost project media
 
+Uploaded to the live submission on 2 November 2026, positions 1 to 10, with `01-desk.jpg`
+as the project thumbnail. Devpost's headless upload is not exposed to MCP sessions, so the
+files were streamed from this folder with the upload URLs the Devpost MCP returned.
+
 Ten images, 3000×2000 (3:2), JPEG, 220–520 KB each. Upload in this order; the first one is the
 project's cover.
 
