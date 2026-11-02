@@ -27,6 +27,7 @@ use kindly_agent::katp::{
     public_key_b64, AgentRef, KatpEnvelope, KatpMessage, MandateAttestation, ProposedInstallment,
     TermsProposal,
 };
+use kindly_core::client::Client;
 use kindly_core::ids::{ActionId, Actor, InvoiceId, SessionId};
 use kindly_core::ledger::{LedgerEvent, LedgerKind};
 use kindly_core::money::{Currency, Money};
@@ -190,18 +191,54 @@ fn buyer_row(agent: &BuyerAgent) -> A2aBuyerRow {
 }
 
 async fn buyer_for_session(state: &AppState, session_id: &str) -> ApiResult<Arc<BuyerAgent>> {
-    state
+    if let Some(buyer) = state
         .buyer_sessions
         .lock()
         .await
         .get(session_id)
         .cloned()
-        .ok_or_else(|| {
-            ApiError::Conflict(
-                "the counterparty agent for this session is no longer loaded (agent keys are ephemeral and reset with the server) — start a new session"
-                    .into(),
-            )
-        })
+    {
+        return Ok(buyer);
+    }
+
+    // The machine can stop and start between visits (the demo scales to zero),
+    // and agent keys live in memory. Rebuild the counterparty from the client's
+    // persisted policy so a saved negotiation is still actionable. Each envelope
+    // carries its own key, so the earlier transcript keeps verifying; the room
+    // shows the new key for anything said from here on.
+    let mut session = load_session(state, session_id).await?;
+    let invoice_id = invoice_id_of(&session)?;
+    let invoice = state.store.invoice(invoice_id).await?;
+    let client = state.store.client(invoice.client_id).await?;
+    let buyer = Arc::new(BuyerAgent::new(
+        buyer_mandate(state, &client).await?,
+        state.llm.clone(),
+    ));
+    state
+        .buyer_sessions
+        .lock()
+        .await
+        .insert(session_id.to_string(), buyer.clone());
+    session.buyer = buyer_row(&buyer);
+    save_session(state, &mut session).await?;
+    Ok(buyer)
+}
+
+/// The counterparty's mandate: their stored policy when the owner has set one,
+/// otherwise a believable default tightened for a slow payer.
+async fn buyer_mandate(state: &AppState, client: &Client) -> ApiResult<BuyerMandate> {
+    let stored = state.store.buyer_policy(client.id).await?;
+    let mut mandate = match &stored {
+        Some(policy) => BuyerMandate::from_policy(client.display_name(), policy),
+        None => BuyerMandate::example(client.display_name()),
+    };
+    if stored.is_none() && client.behavior.avg_days_late >= 25 {
+        mandate.max_unapproved_cash_minor = 60_000;
+        mandate
+            .policy
+            .push("Slow-payer profile: tighter release limits for this supplier.".into());
+    }
+    Ok(mandate)
 }
 
 fn invoice_id_of(session: &A2aSessionRow) -> ApiResult<InvoiceId> {
@@ -224,18 +261,10 @@ pub async fn start_session(
 
     // The counterparty agent, built from the client's profile and whatever
     // policy the owner has set for them in the negotiation room.
-    let stored = state.store.buyer_policy(client.id).await?;
-    let mut mandate = match &stored {
-        Some(policy) => BuyerMandate::from_policy(client.display_name(), policy),
-        None => BuyerMandate::example(client.display_name()),
-    };
-    if stored.is_none() && client.behavior.avg_days_late >= 25 {
-        mandate.max_unapproved_cash_minor = 60_000;
-        mandate
-            .policy
-            .push("Slow-payer profile: tighter release limits for this supplier.".into());
-    }
-    let buyer = Arc::new(BuyerAgent::new(mandate, state.llm.clone()));
+    let buyer = Arc::new(BuyerAgent::new(
+        buyer_mandate(state, &client).await?,
+        state.llm.clone(),
+    ));
 
     let session_id = SessionId::new().to_string();
     state
