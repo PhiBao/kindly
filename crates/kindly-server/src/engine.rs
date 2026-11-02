@@ -158,7 +158,13 @@ pub async fn push_invoice_to_paypal(
         Err(error) => return Err(error.into()),
     };
     invoice.paypal_invoice_id = Some(created.id.clone());
-    invoice.paypal_status = Some(created.status.as_str().to_string());
+    // Create returns only an href, so the parsed status is Unknown. The object
+    // exists as a draft at that point; call it what it is rather than showing
+    // "UNKNOWN" next to a real invoice id.
+    invoice.paypal_status = Some(match created.status {
+        kindly_paypal::model::PayPalInvoiceStatus::Unknown => "DRAFT".to_string(),
+        status => status.as_str().to_string(),
+    });
     state.store.upsert_invoice(invoice, work_summary).await?;
     Ledger::new(&state.store, Some(&state.events))
         .write(
@@ -207,6 +213,11 @@ pub async fn mirror_unmirrored(state: &AppState) -> ApiResult<usize> {
     let _guard = state.mirror_lock.lock().await;
     let mut mirrored = 0;
     for invoice in state.store.invoices().await? {
+        if invoice.paypal_status.as_deref() == Some("UNKNOWN") && invoice.issued_at.is_some() {
+            let mut fixed = invoice.clone();
+            fixed.paypal_status = Some("SENT".to_string());
+            state.store.upsert_invoice(&fixed, None).await?;
+        }
         if invoice.paypal_invoice_id.is_some() || invoice.parent_invoice_id.is_some() {
             continue;
         }
