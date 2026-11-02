@@ -42,12 +42,46 @@ export default function ClientPortalPage() {
     return () => clearInterval(interval);
   }, [load]);
 
+  // Returning from PayPal's hosted checkout: ?token=<order id>. Capture it
+  // here, then clean the URL so a refresh does not try to capture twice.
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const orderId = query.get("token");
+    if (!orderId) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    setPhase("paying");
+    setNote("PayPal approved the payment. Capturing it now…");
+    void (async () => {
+      try {
+        const capture = await api.portalCapture(token, orderId);
+        paidRef.current = true;
+        setJustPaid(true);
+        setNote(
+          capture.simulated
+            ? "Payment recorded through Kindly's PayPal simulator — no real money moved."
+            : "Payment captured by PayPal.",
+        );
+        await load();
+        setPhase("paid");
+      } catch (cause) {
+        setPhase("error");
+        setNote(cause instanceof Error ? cause.message : String(cause));
+      }
+    })();
+  }, [token, load]);
+
   const pay = async (amountMinor?: number) => {
     if (!view) return;
     setPhase("paying");
     setNote(null);
     try {
       const order = await api.portalOrder(token, amountMinor);
+      if (order.approve_url) {
+        // Live PayPal: the payer approves in their own PayPal session, then
+        // PayPal returns them to this page with ?token=<order id>.
+        window.location.assign(order.approve_url);
+        return;
+      }
       const capture = await api.portalCapture(token, order.order_id);
       paidRef.current = true;
       setJustPaid(true);

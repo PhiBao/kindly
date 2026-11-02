@@ -279,8 +279,20 @@ export default function InvoiceDeskPage() {
               label="Their habit"
               value={`${client.risk_label}${client.avg_days_late > 0 ? `, ~${client.avg_days_late}d late` : ""}`}
             />
-            <StatusLine label="PayPal invoice" value={invoice.paypal_invoice_id ?? "not created"} mono />
-            <StatusLine label="PayPal status" value={invoice.paypal_status ?? "—"} mono />
+            {invoice.paypal_status === "PAYMENT_LINKS" ? (
+              <>
+                <StatusLine label="Settlement" value="PayPal Checkout link" />
+                <StatusLine
+                  label="Why no invoice"
+                  value="this app is not enabled for PayPal Invoicing — the payment is taken by PayPal Checkout instead"
+                />
+              </>
+            ) : (
+              <>
+                <StatusLine label="PayPal invoice" value={invoice.paypal_invoice_id ?? "not created"} mono />
+                <StatusLine label="PayPal status" value={invoice.paypal_status ?? "—"} mono />
+              </>
+            )}
             <StatusLine label="Issued" value={shortDate(invoice.issued_at)} />
             <StatusLine label="Stage" value={negotiation.stage.replace(/_/g, " ")} />
             <StatusLine label="Contacts" value={String(negotiation.contact_count)} />

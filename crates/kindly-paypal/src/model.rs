@@ -324,6 +324,15 @@ pub struct NewOrder {
     /// Opaque Kindly reference (portal token id + invoice id) stored in the
     /// order's custom_id so captures can be reconciled even if a webhook is lost.
     pub custom_id: String,
+    /// Where PayPal sends the payer after approval. Without it the payer is
+    /// stranded on PayPal's confirmation page.
+    #[serde(default)]
+    pub return_url: Option<String>,
+    #[serde(default)]
+    pub cancel_url: Option<String>,
+    /// Shown on PayPal's checkout page.
+    #[serde(default)]
+    pub brand_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -331,6 +340,23 @@ pub struct PayPalOrder {
     pub id: String,
     pub status: String,
     pub raw: Value,
+}
+
+impl PayPalOrder {
+    /// The hosted approval URL, when PayPal returned one.
+    pub fn approve_url(&self) -> Option<String> {
+        self.raw
+            .get("links")
+            .and_then(|links| links.as_array())
+            .and_then(|links| {
+                links
+                    .iter()
+                    .find(|link| link.get("rel").and_then(|rel| rel.as_str()) == Some("approve"))
+            })
+            .and_then(|link| link.get("href"))
+            .and_then(|href| href.as_str())
+            .map(str::to_string)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

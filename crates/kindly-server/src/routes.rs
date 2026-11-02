@@ -162,6 +162,17 @@ async fn health(State(state): State<SharedState>) -> ApiResult<Json<Value>> {
         "status": "ok",
         "paypal_mode": state.config.paypal_mode.label(),
         "paypal_configured": state.config.paypal_configured(),
+        "invoicing": state.config.invoicing.label(),
+        // What the payer actually gets: PayPal's own invoice page, or a
+        // Checkout payment link. Never guessed; derived from what the app is
+        // permitted to do.
+        "settlement_surface": if state.config.paypal_mode == PayPalMode::Sim {
+            "simulator"
+        } else if state.config.invoicing == crate::config::InvoicingMode::Off {
+            "paypal_checkout"
+        } else {
+            "paypal_invoicing_or_checkout"
+        },
         "language_model": state.llm.description(),
         "model_enabled": state.llm.is_enabled(),
         "judgment_layer": state.system_one.description(),
@@ -1341,6 +1352,13 @@ async fn portal_order(
             "amount must be positive and no more than the outstanding balance".into(),
         ));
     }
+    // PayPal sends the payer back here after approval so the client never has
+    // to find their way back to the invoice.
+    let return_url = format!(
+        "{}/c/{}",
+        state.config.public_url.trim_end_matches('/'),
+        token
+    );
     let order = state
         .paypal
         .create_order(kindly_paypal::model::NewOrder {
@@ -1351,6 +1369,9 @@ async fn portal_order(
                 invoice.number, state.config.owner_business
             ),
             custom_id: format!("kindly:{invoice_id}", invoice_id = invoice.id),
+            return_url: Some(return_url.clone()),
+            cancel_url: Some(return_url),
+            brand_name: Some(state.config.owner_business.clone()),
         })
         .await?;
     Ok(Json(json!({
@@ -1358,6 +1379,9 @@ async fn portal_order(
         "status": order.status,
         "amount_minor": amount_minor,
         "currency": invoice.currency.code(),
+        // Present in live mode: the payer must approve at PayPal before we can
+        // capture. Absent in simulation, where capture is immediate.
+        "approve_url": order.approve_url(),
         "mode": match state.config.paypal_mode { PayPalMode::Live => "live", PayPalMode::Sim => "sim" },
     })))
 }

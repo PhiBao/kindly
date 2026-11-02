@@ -126,7 +126,32 @@ pub async fn push_invoice_to_paypal(
         allow_partial_payment: true,
     };
 
-    let created = state.paypal.create_invoice(request).await?;
+    let created = match state.paypal.create_invoice(request).await {
+        Ok(created) => created,
+        Err(error) if is_invoicing_unavailable(&error) => {
+            if state.config.invoicing == crate::config::InvoicingMode::On {
+                return Err(error.into());
+            }
+            // The app can take payments but is not permitted to create PayPal
+            // Invoice objects. Say so plainly, once, and settle through a
+            // Checkout payment link instead. Nothing pretends an invoice exists.
+            invoice.paypal_status = Some("PAYMENT_LINKS".to_string());
+            state.store.upsert_invoice(invoice, work_summary).await?;
+            Ledger::new(&state.store, Some(&state.events))
+                .note(
+                    Actor::PayPal,
+                    LedgerKind::PayPalCall,
+                    format!(
+                        "PayPal Invoicing is not enabled for this app; {} will settle through a PayPal Checkout payment link.",
+                        invoice.number
+                    ),
+                    Some(invoice.id),
+                )
+                .await?;
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
     invoice.paypal_invoice_id = Some(created.id.clone());
     invoice.paypal_status = Some(created.status.as_str().to_string());
     state.store.upsert_invoice(invoice, work_summary).await?;
@@ -152,6 +177,16 @@ pub async fn push_invoice_to_paypal(
     Ok(())
 }
 
+/// A 403 from Invoicing means the app is not granted the Invoicing feature —
+/// not that the credentials are wrong (OAuth and Checkout succeed with the same
+/// app). Anything else is a real failure and must not be papered over.
+fn is_invoicing_unavailable(error: &kindly_paypal::PayPalError) -> bool {
+    matches!(
+        error,
+        kindly_paypal::PayPalError::Api { status: 401 | 403, .. }
+    )
+}
+
 /// Send an invoice to the client through PayPal.
 pub async fn send_invoice_via_paypal(
     state: &AppState,
@@ -160,6 +195,14 @@ pub async fn send_invoice_via_paypal(
     note: &str,
 ) -> ApiResult<()> {
     let Some(paypal_id) = invoice.paypal_invoice_id.clone() else {
+        // No invoice object exists (Invoicing is unavailable, or the invoice is
+        // still a draft). The client still gets a signed portal link where
+        // PayPal Checkout takes the payment, so "sent" is the truth here.
+        if invoice.paypal_status.as_deref() == Some("PAYMENT_LINKS") {
+            invoice.mark_sent(Utc::now());
+            state.store.upsert_invoice(invoice, None).await?;
+            return Ok(());
+        }
         return Err(ApiError::Conflict(
             "invoice has no PayPal mirror yet".to_string(),
         ));

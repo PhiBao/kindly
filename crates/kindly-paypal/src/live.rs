@@ -384,7 +384,7 @@ impl PayPalApi for LivePayPal {
     }
 
     async fn create_order(&self, request: NewOrder) -> PayPalResult<PayPalOrder> {
-        let body = json!({
+        let mut body = json!({
             "intent": "CAPTURE",
             "purchase_units": [{
                 "custom_id": request.custom_id,
@@ -395,6 +395,20 @@ impl PayPalApi for LivePayPal {
                 }
             }],
         });
+        let mut context = serde_json::Map::new();
+        if let Some(return_url) = &request.return_url {
+            context.insert("return_url".into(), json!(return_url));
+        }
+        if let Some(cancel_url) = &request.cancel_url {
+            context.insert("cancel_url".into(), json!(cancel_url));
+        }
+        if let Some(brand_name) = &request.brand_name {
+            context.insert("brand_name".into(), json!(brand_name));
+        }
+        if !context.is_empty() {
+            context.insert("user_action".into(), json!("PAY_NOW"));
+            body["application_context"] = Value::Object(context);
+        }
         let request_id = format!("kindly-order-{}", uuid::Uuid::now_v7());
         let (_, value, _) = self
             .call(

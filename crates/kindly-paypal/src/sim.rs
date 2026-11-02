@@ -691,6 +691,9 @@ mod tests {
                 amount_minor: 120_000,
                 description: "Invoice 1042 — partial payment".into(),
                 custom_id: "inv:1042".into(),
+                return_url: None,
+                cancel_url: None,
+                brand_name: None,
             })
             .await
             .unwrap();

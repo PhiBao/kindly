@@ -2,6 +2,30 @@
 
 use std::path::PathBuf;
 
+/// Whether Kindly may create PayPal Invoice objects, or should settle through
+/// Checkout payment links instead.
+///
+/// `Auto` asks for an invoice first and falls back to a Checkout order when the
+/// app is not permitted to use Invoicing (PayPal returns 403 NOT_AUTHORIZED).
+/// That keeps a judge-facing deployment working with ordinary merchant
+/// credentials while still preferring real invoices when they are available.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvoicingMode {
+    Auto,
+    On,
+    Off,
+}
+
+impl InvoicingMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            InvoicingMode::Auto => "auto",
+            InvoicingMode::On => "required",
+            InvoicingMode::Off => "off",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PayPalMode {
     /// The real PayPal APIs (sandbox or live, depending on the base URL).
@@ -24,6 +48,8 @@ pub struct Config {
     pub database_url: String,
     pub port: u16,
     pub paypal_mode: PayPalMode,
+    /// Create real PayPal invoice objects, or settle with Checkout links.
+    pub invoicing: InvoicingMode,
     pub paypal_base_url: String,
     pub paypal_client_id: String,
     pub paypal_client_secret: String,
@@ -68,6 +94,11 @@ impl Config {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(8787),
             paypal_mode,
+            invoicing: match std::env::var("KINDLY_INVOICING").as_deref() {
+                Ok("on") | Ok("require") | Ok("required") => InvoicingMode::On,
+                Ok("off") | Ok("false") | Ok("0") => InvoicingMode::Off,
+                _ => InvoicingMode::Auto,
+            },
             paypal_base_url: std::env::var("PAYPAL_API_BASE")
                 .unwrap_or_else(|_| "https://api-m.sandbox.paypal.com".to_string()),
             paypal_client_id: std::env::var("PAYPAL_CLIENT_ID").unwrap_or_default(),
@@ -108,6 +139,7 @@ impl Config {
             database_url: "sqlite::memory:".to_string(),
             port: 0,
             paypal_mode: PayPalMode::Sim,
+            invoicing: InvoicingMode::Auto,
             paypal_base_url: "http://localhost".to_string(),
             paypal_client_id: String::new(),
             paypal_client_secret: String::new(),

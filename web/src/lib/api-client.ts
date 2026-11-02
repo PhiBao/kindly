@@ -407,15 +407,20 @@ export const api = {
     post<{ intent: string }>(`/api/portal/${token}/message`, { body }),
 
   portalOrder: (token: string, amountMinor?: number) =>
-    post<{ order_id: string; amount_minor: number; currency: string; mode: string }>(
-      `/api/portal/${token}/order`,
-      amountMinor ? { amount_minor: amountMinor } : {},
-    ),
+    post<{
+      order_id: string;
+      amount_minor: number;
+      currency: string;
+      /** Set in live mode: the payer approves at PayPal before we capture. */
+      approve_url: string | null;
+      mode: string;
+    }>(`/api/portal/${token}/order`, amountMinor ? { amount_minor: amountMinor } : {}),
 
   portalCapture: (token: string, orderId: string) =>
-    post<{ captured: boolean; simulated: boolean }>(`/api/portal/${token}/capture`, {
-      order_id: orderId,
-    }),
+    post<{ captured: boolean; simulated: boolean; status?: string }>(
+      `/api/portal/${token}/capture`,
+      { order_id: orderId },
+    ),
 };
 
 // ── live events ───────────────────────────────────────────────────────────

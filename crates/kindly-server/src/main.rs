@@ -336,6 +336,10 @@ async fn serve(flags: Vec<String>) -> Result<()> {
 
 async fn paypal_check() -> Result<()> {
     let config = Config::from_env();
+    if !config.paypal_configured() {
+        eprintln!("PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are not set.");
+        std::process::exit(1);
+    }
     let live = LivePayPal::new(kindly_paypal::LiveConfig {
         base_url: config.paypal_base_url.clone(),
         client_id: config.paypal_client_id.clone(),
@@ -346,25 +350,60 @@ async fn paypal_check() -> Result<()> {
     })
     .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
+    println!("PayPal at {}", config.paypal_base_url);
+
+    let mut ok = true;
     match live.list_invoices(5).await {
         Ok(invoices) => {
-            println!(
-                "PayPal OK — {} invoice(s) visible to this app at {}",
-                invoices.len(),
-                config.paypal_base_url
-            );
-            for invoice in invoices {
-                println!(
-                    "  {} {:?} due {:?}",
-                    invoice.id, invoice.status, invoice.due_date
-                );
-            }
-            Ok(())
+            println!("  invoicing : available ({} invoice(s) visible)", invoices.len());
+        }
+        Err(kindly_paypal::PayPalError::Api { status, issue, .. }) if matches!(status, 401 | 403) => {
+            // Credentials are proven by the Checkout call below; this is the
+            // app's feature set, not a bad secret.
+            println!("  invoicing : not enabled for this app ({status} {issue})");
+            println!("              invoices will settle through PayPal Checkout links");
         }
         Err(error) => {
-            eprintln!("PayPal check failed: {error}");
-            std::process::exit(1);
+            ok = false;
+            println!("  invoicing : failed — {error}");
         }
+    }
+
+    // A one-cent order proves the payment surface without moving money.
+    match live
+        .create_order(kindly_paypal::model::NewOrder {
+            currency_code: "USD".into(),
+            amount_minor: 1,
+            description: "Kindly capability check (never captured)".into(),
+            custom_id: "kindly:capability-check".into(),
+            return_url: None,
+            cancel_url: None,
+            brand_name: Some(config.owner_business.clone()),
+        })
+        .await
+    {
+        Ok(order) => {
+            println!("  checkout  : available (order {} {})", order.id, order.status);
+            if let Some(url) = order.approve_url() {
+                println!("              approval page {url}");
+            }
+        }
+        Err(error) => {
+            ok = false;
+            println!("  checkout  : failed — {error}");
+        }
+    }
+
+    match &config.paypal_webhook_id {
+        Some(id) => println!("  webhooks  : signature verification configured ({id})"),
+        None => println!("  webhooks  : PAYPAL_WEBHOOK_ID is not set — deliveries will be refused"),
+    }
+
+    if ok {
+        Ok(())
+    } else {
+        eprintln!("PayPal check failed: the app cannot take payments.");
+        std::process::exit(1);
     }
 }
 
