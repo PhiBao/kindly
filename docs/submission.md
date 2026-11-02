@@ -13,7 +13,7 @@ blocks. Replace `‹placeholders›` before submitting.
 | Submitter Country of Residence | `‹your country›` |
 | If you or any team members reside in Canada | `N/A` (or the province) |
 | Organization Name | `N/A` |
-| Is your project new, or did it exist before Oct 1, 2026? | **New** — the first commit is dated `‹date of first commit›` |
+| Is your project new, or did it exist before Oct 1, 2026? | **New** — the first commit is dated `2026-10-12` |
 | If it existed before, explain… | `N/A — new project.` |
 
 ---
