@@ -35,10 +35,9 @@ primary_region = "sin"
 [http_service]
   internal_port = 8787
   force_https = true
-  # Scale to zero. "suspend" freezes the VM instead of rebooting it, so a cold
-  # request resumes in well under a second and the demo keeps the state a judge
-  # left behind. A full stop (deploy, host maintenance) reseeds the demo.
-  auto_stop_machines = "suspend"
+  # Scale to zero. A stopped machine costs nothing; Fly starts it on the next
+  # request. The live instance does not reseed on boot, so a judge's state survives.
+  auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0
 

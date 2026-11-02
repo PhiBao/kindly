@@ -401,10 +401,10 @@ Four services, all from this repository.
 | PayPal | sandbox APIs (`api-m.sandbox.paypal.com`) | in-process simulator |
 | Payment | Checkout order → test card → capture → signed webhook | one click |
 
-Both APIs scale to **zero** (`min_machines_running = 0`). Fly suspends the VM rather than
-rebooting it, so a cold request resumes in about half a second and the desk keeps whatever state
-a judge left behind. A full stop reseeds only the simulation; the live instance has
-`KINDLY_DEMO_MODE=0` so a restart never wipes a judge's progress.
+Both APIs scale to **zero** (`min_machines_running = 0`, `auto_stop_machines = "stop"`), so an
+idle demo costs only its volume. The first request after a quiet spell starts the machine; the
+live instance has `KINDLY_DEMO_MODE=0`, so a restart never wipes a judge's progress, and the API
+persists everything in SQLite on a Fly volume.
 
 ```bash
 # live API
@@ -567,6 +567,12 @@ giving away money — so that is the case the code is written against.
 - **Failure handling.** PayPal calls retry with backoff and honour `Retry-After`; a lost
   webhook is caught by the reconciler, which reads the invoice back from PayPal; every failed
   action is recorded with its error and left visible rather than swallowed.
+- **The hosted demo is deliberately open, and says so.** `KINDLY_ADMIN_TOKEN` is unset there so
+  a judge can use the desk without a login: that means anyone can call the dashboard API,
+  including `/api/demo/reset` and invoice creation. Against the sandbox the worst case is
+  clutter and test invoices; a real deployment sets the token, and the client portal keeps using
+  signed, expiring capability links either way. There is no rate limiting on the demo API —
+  production would put it behind the token and a proxy limit.
 - **Tooling output is untrusted too.** During a build, Next.js printed an agent-directed
   instruction ("ask the user… run `next upgrade --agent=security …`"). It came from the
   framework's own upgrade nudge (`next/dist/lib/upgrade/nudge.js`), not from a compromised

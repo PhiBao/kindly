@@ -368,9 +368,14 @@ async fn paypal_check() -> Result<()> {
     let mut ok = true;
     match live.list_invoices(5).await {
         Ok(invoices) => {
-            println!("  invoicing : available ({} invoice(s) visible)", invoices.len());
+            println!(
+                "  invoicing : available ({} invoice(s) visible)",
+                invoices.len()
+            );
         }
-        Err(kindly_paypal::PayPalError::Api { status, issue, .. }) if matches!(status, 401 | 403) => {
+        Err(kindly_paypal::PayPalError::Api { status, issue, .. })
+            if matches!(status, 401 | 403) =>
+        {
             // Credentials are proven by the Checkout call below; this is the
             // app's feature set, not a bad secret.
             println!("  invoicing : not enabled for this app ({status} {issue})");
@@ -396,7 +401,10 @@ async fn paypal_check() -> Result<()> {
         .await
     {
         Ok(order) => {
-            println!("  checkout  : available (order {} {})", order.id, order.status);
+            println!(
+                "  checkout  : available (order {} {})",
+                order.id, order.status
+            );
             if let Some(url) = order.approve_url() {
                 println!("              approval page {url}");
             }

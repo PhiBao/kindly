@@ -108,7 +108,7 @@ export default function SimPage() {
             day, or when you want the payment step to take one click instead of five.
           </p>
           <a className="btn mt-4" href={other}>
-            {live ? "Open the simulation" : "Open the live desk"}
+            {live ? "Open the simulation" : "You are here — the simulation"}
           </a>
         </section>
       </div>

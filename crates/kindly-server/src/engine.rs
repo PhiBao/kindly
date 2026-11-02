@@ -188,7 +188,10 @@ pub async fn push_invoice_to_paypal(
 fn is_invoicing_unavailable(error: &kindly_paypal::PayPalError) -> bool {
     matches!(
         error,
-        kindly_paypal::PayPalError::Api { status: 401 | 403, .. }
+        kindly_paypal::PayPalError::Api {
+            status: 401 | 403,
+            ..
+        }
     )
 }
 
