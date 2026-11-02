@@ -10,7 +10,7 @@ exactly what got you paid.
 Built for the **PayPal AI Hackathon: Build what's next with PayPal and AI** (submissions
 close 12 November 2026).
 
-**[Live demo](https://kindly-desk-web.vercel.app)** · **[Demo video](docs/kindly-demo.mp4)** · **[Simulation](https://kindly-desk-sim.vercel.app)** · **[Source](https://github.com/PhiBao/kindly)**
+**[Live demo](https://kindly-desk-web.vercel.app)** · **[Demo video](https://youtu.be/Ib4FgWIXMnk)** · **[Simulation](https://kindly-desk-sim.vercel.app)** · **[Source](https://github.com/PhiBao/kindly)**
 
 The live demo runs against **PayPal's sandbox**: real invoice objects, real Checkout, real signed
 webhooks — test money, no bank. Pay with a test card (`4111 1111 1111 1111`, any future date, CVC
@@ -500,7 +500,7 @@ visit — so it no longer does.
    refusal, the attribution, and the webhook that closed the loop.
 6. Press **Scenarios → A client tries to instruct the agent** to see the defence.
 
-**The video.** `docs/kindly-demo.mp4` is 2:49, recorded against the live sandbox: the
+**The video.** [Watch it on YouTube](https://youtu.be/Ib4FgWIXMnk) (2:49), or use the file at `docs/kindly-demo.mp4`. It was recorded against the live sandbox: the
 negotiation, the real PayPal invoices it issues, a client message being read, and a settled
 invoice with its verified capture. The script and the card templates are in `docs/video/`, so
 the take is reproducible with [open-video-demo](https://github.com/PhiBao/open-video-demo).

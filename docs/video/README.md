@@ -1,6 +1,7 @@
 # The demo video — source
 
-`docs/kindly-demo.mp4` is a 2:49, 1080p30, narrated and subtitled product demo. It was rendered
+`docs/kindly-demo.mp4` is a 2:49, 1080p30, narrated and subtitled product demo. It is published at
+<https://youtu.be/Ib4FgWIXMnk>. It was rendered
 with [open-video-demo](https://github.com/PhiBao/open-video-demo), which records real Playwright
 sessions against the deployed app and assembles them with edge-tts narration and ffmpeg.
 

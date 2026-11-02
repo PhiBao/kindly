@@ -108,9 +108,8 @@ blocks. Replace `‹placeholders›` before submitting.
 
 ## Provide a URL to a demo video
 
-> **https://github.com/PhiBao/kindly/raw/main/docs/kindly-demo.mp4** — 2:49, 1080p, narrated and
-> subtitled. (Upload this file to YouTube and paste that URL instead if the form requires a
-> video platform; the file on GitHub is the same cut.)
+> **https://youtu.be/Ib4FgWIXMnk** — 2:49, 1080p, narrated and subtitled. A copy of the same cut
+> is in the repository at `docs/kindly-demo.mp4`.
 >
 > Recorded on the live deployment against PayPal's sandbox: the agent-to-agent negotiation, the
 > policy refusal, the real PayPal invoices issued on approval, a client message read in the
