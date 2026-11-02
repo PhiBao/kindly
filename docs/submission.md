@@ -106,6 +106,16 @@ blocks. Replace `‹placeholders›` before submitting.
 > the unit tests, the simulation smoke test, the browser check, the live verifier, and an
 > explicit table of what is real versus simulated.
 
+## Provide a URL to a demo video
+
+> **https://github.com/PhiBao/kindly/raw/main/docs/kindly-demo.mp4** — 2:16, 1080p, narrated and
+> subtitled. (Upload this file to YouTube and paste that URL instead if the form requires a
+> video platform; the file on GitHub is the same cut.)
+>
+> Recorded on the live deployment against PayPal's sandbox: the agent-to-agent negotiation, the
+> policy refusal, the real PayPal invoices issued on approval, a client message read in the
+> portal, a test-card payment, and the `PAYMENT.CAPTURE.COMPLETED` delivery it produced.
+
 ## Provide a URL to a working demo
 
 > **https://kindly-desk-web.vercel.app** — Next.js on Vercel, Rust API on Fly (SQLite on a Fly

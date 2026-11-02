@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- Kindly title card: paper, ink, one stamp-red accent. -->
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden}
+body{background:{{bg}};font-family:'DejaVu Sans',system-ui,sans-serif;color:{{ink}};
+  background-image:radial-gradient(rgba(25,23,19,.06) 1px, transparent 1px);
+  background-size:22px 22px}
+.wrap{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+  padding:96px 150px 96px 150px}
+.mark{position:absolute;top:74px;left:150px;width:86px;height:86px;border:3px solid {{accent1}};
+  color:{{accent1}};display:flex;align-items:center;justify-content:center;
+  font-family:'DejaVu Serif',Georgia,serif;font-size:52px;font-weight:700;
+  transform:rotate(-3deg);opacity:0;animation:stamp .5s cubic-bezier(.2,.9,.3,1.2) .15s both}
+@keyframes stamp{from{opacity:0;transform:rotate(-9deg) scale(.86)}to{opacity:1;transform:rotate(-3deg) scale(1)}}
+.kicker{margin-top:70px;display:flex;align-items:center;gap:16px;font-size:22px;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:{{accent1}};
+  opacity:0;animation:slide .7s cubic-bezier(.16,1,.3,1) .1s both}
+.kicker::before{content:'';width:52px;height:2px;background:{{accent1}}}
+h1{font-family:'DejaVu Serif',Georgia,serif;font-size:176px;line-height:.94;margin:26px 0 0;
+  letter-spacing:-.04em;font-weight:700;color:{{ink}};
+  opacity:0;transform:translateY(18px);animation:rise .9s cubic-bezier(.16,1,.3,1) .25s both}
+@keyframes rise{to{opacity:1;transform:none}}
+@keyframes slide{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+.tag{font-family:'DejaVu Serif',Georgia,serif;font-style:italic;font-size:54px;color:{{accent1}};
+  margin-top:14px;opacity:0;animation:slide .8s cubic-bezier(.16,1,.3,1) .5s both}
+.rule{width:190px;height:3px;background:{{ink}};margin-top:34px;transform:scaleX(0);
+  transform-origin:0 50%;animation:rule .7s cubic-bezier(.16,1,.3,1) .62s both}
+@keyframes rule{to{transform:scaleX(1)}}
+.sub{font-size:30px;line-height:1.5;color:{{muted}};margin-top:28px;max-width:1180px;
+  opacity:0;animation:slide .8s cubic-bezier(.16,1,.3,1) .72s both}
+.note{font-size:24px;color:{{faint}};margin-top:14px;
+  opacity:0;animation:slide .8s cubic-bezier(.16,1,.3,1) .86s both}
+.meta{position:absolute;left:150px;bottom:150px;font-size:21px;letter-spacing:.06em;color:{{faint}};
+  opacity:0;animation:slide .8s ease 1s both}
+</style></head><body>
+<div class="wrap">
+  <div class="mark">K</div>
+  <div class="kicker">{{kicker}}</div>
+  <h1>{{name}}</h1>
+  <div class="tag">{{tagline}}</div>
+  <div class="rule"></div>
+  <div class="sub">{{sub}}</div>
+  <div class="note">{{note}}</div>
+</div>
+<div class="meta">{{meta}}</div>
+</body></html>

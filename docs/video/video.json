@@ -1,0 +1,41 @@
+{
+  "name": "kindly",
+  "output": "out/kindly.mp4",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "voice": "en-US-GuyNeural",
+  "rate": "-5%",
+  "volume": "+0%",
+  "pad": 0.45,
+  "trim": 0.6,
+  "crf": 20,
+  "preset": "medium",
+  "burn_subtitles": true,
+  "loudness": "I=-16:TP=-1.5:LRA=11",
+  "subtitle_style": "FontName=DejaVu Sans,FontSize=30,PrimaryColour=&HFFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=46,PlayResX=1920,PlayResY=1080",
+  "theme": {
+    "bg": "#efe9dc",
+    "accent1": "#9c2f24",
+    "accent2": "#1d1b17",
+    "accent3": "#9c2f24",
+    "ink": "#191713",
+    "muted": "#5c564b",
+    "faint": "#8a8377",
+    "hi": "#9c2f24",
+    "hi2": "#2f5d4f",
+    "subc": "#5c564b",
+    "shade": "rgba(0,0,0,.05)"
+  },
+  "branding": {
+    "name": "Kindly",
+    "tagline": "The asking, handled.",
+    "sub": "An agent that chases, negotiates and settles unpaid invoices through PayPal — inside limits you write once, in plain language.",
+    "note": "Real PayPal invoice objects, checkout and signature-verified webhooks.",
+    "meta": "PAYPAL AI HACKATHON 2026 &middot; kindly-desk-web.vercel.app",
+    "kicker": "PAYPAL AI HACKATHON &middot; 2026",
+    "headline": "Chases, negotiates, settles. <b>Inside your mandate.</b><br><i>Every refusal on the record.</i>",
+    "links": "kindly-desk-web.vercel.app &middot; github.com/PhiBao/kindly",
+    "footnote": "Press Scenarios &rarr; Agent-to-agent negotiation, then approve their side."
+  }
+}
